@@ -1,0 +1,6 @@
+# OpenEnv Hackathon Requirements
+openenv>=0.1.0
+gymnasium>=0.29.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+torch>=2.0.0
