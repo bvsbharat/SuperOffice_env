@@ -34,20 +34,47 @@ class RewardCalculator:
             current = state.get_all_kpis()
             reward += self._kpi_delta_reward(agent_id, self._prev_kpis, current)
 
-        # 3. Action success/failure
+        # 3. Direct action rewards (Dev shipping, etc.)
+        reward += self._action_reward(agent_id, action_result)
+
+        # 4. Action success/failure
         if not action_result.get("success", True):
             reward -= 1.0
 
-        # 4. Collaboration bonus -- check if action builds on another agent's work
+        # 5. Collaboration bonus -- check if action builds on another agent's work
         reward += self._collaboration_bonus(state, agent_id, action_result)
 
-        # 5. Constraint penalties
+        # 6. Constraint penalties
         reward += self._constraint_penalties(state, agent_id, action_result)
 
         # Take new snapshot for next calculation
         self._prev_kpis = state.get_all_kpis()
 
         return round(reward, 2)
+
+    def _action_reward(self, agent_id: str, action_result: dict) -> float:
+        """Direct rewards for impactful actions."""
+        if not action_result.get("success", True):
+            return 0.0
+
+        reward = 0.0
+        detail = action_result.get("detail", "")
+        action = action_result.get("action_type", "")
+
+        if agent_id == "dev":
+            # Reward for shipping features
+            if action == "SHIP_RELEASE" and "Shipped" in detail:
+                reward += 3.0
+            # Small reward for progressing a build
+            elif action == "BUILD_FEATURE" and "remaining" in detail:
+                reward += 0.5
+
+        elif agent_id == "content":
+            # Reward for publishing content
+            if "Published" in detail:
+                reward += 0.5
+
+        return reward
 
     def _kpi_delta_reward(self, agent_id: str, prev: dict, current: dict) -> float:
         """Small reward for improving company-wide KPIs."""
