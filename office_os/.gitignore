@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+
+# Logs
+*.log
+
+# Credentials / secrets
+*.json
+!package.json
+
+# OS files
+.DS_Store

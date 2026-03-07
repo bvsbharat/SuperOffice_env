@@ -63,16 +63,22 @@ console = Console()
 
 # Colors per agent role
 ROLE_COLORS = {
+    "ceo": "bold white",
     "dev": "cyan",
     "marketing": "magenta",
     "sales": "green",
     "content": "yellow",
+    "hr": "bright_blue",
+    "customer": "bright_red",
 }
 ROLE_NAMES = {
+    "ceo": "Jeeya (CEO)",
     "dev": "Alex (Dev)",
     "marketing": "Jordan (Mktg)",
     "sales": "Sam (Sales)",
     "content": "Casey (Content)",
+    "hr": "Pat (HR)",
+    "customer": "Customer",
 }
 
 STAGE_COLORS = {

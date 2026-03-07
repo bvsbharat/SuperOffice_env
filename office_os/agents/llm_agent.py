@@ -361,6 +361,15 @@ class LLMAgent:
                 return {"action_type": "LAUNCH_CAMPAIGN", "target": "Growth Campaign", "parameters": {}, "reasoning": "Driving traffic for leads", "message": None}
             return {"action_type": "OPTIMIZE_FUNNEL", "target": "", "parameters": {}, "reasoning": "Free conversion optimization", "message": None}
 
+        elif self.role == "ceo":
+            return {"action_type": "REVIEW_STRATEGY", "target": "overall performance", "parameters": {}, "reasoning": "Reviewing company strategy", "message": None}
+
+        elif self.role == "hr":
+            return {"action_type": "PLAN_SPRINT", "target": "current priorities", "parameters": {}, "reasoning": "Planning team sprint", "message": None}
+
+        elif self.role == "customer":
+            return {"action_type": "EVALUATE_PRODUCT", "target": "", "parameters": {}, "reasoning": "Evaluating product quality", "message": None}
+
         else:  # content
             return {"action_type": "WRITE_BLOG", "target": "SaaS Growth Strategies", "parameters": {"topic": "growth"}, "reasoning": "Generating traffic and leads", "message": None}
 

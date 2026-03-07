@@ -222,6 +222,18 @@ class OfficeOsEnvironment(Environment):
                     for p in self._market.content_pieces if p.published
                 ],
             },
+            "ceo": {
+                "okrs": [o.get("objective", "") for o in self._market.okrs[-3:]],
+            },
+            "hr": {
+                "team_velocity": self._market.team_velocity,
+                "contractors": self._market.contractors,
+                "blockers": len(self._market.blockers),
+            },
+            "customer": {
+                "nps_score": self._market.nps_score,
+                "satisfaction": self._market.customer_satisfaction,
+            },
         }
 
         # ── Role-specific deep data ──
@@ -292,6 +304,39 @@ class OfficeOsEnvironment(Environment):
                 or "happy" in fb.get("content", "").lower()
             ]
             data["content_calendar_suggestion"] = self._suggest_content()
+
+        elif role == "ceo":
+            data["okrs"] = self._market.okrs
+            data["all_customers"] = [
+                {"name": c.name, "stage": c.stage, "budget": c.budget}
+                for c in self._market.customers
+            ]
+            data["burn_rate"] = 15000.0 - self._market.budget_remaining
+            data["shipped_features"] = [f.name for f in self._market.shipped_features()]
+            data["nps_score"] = self._market.nps_score
+
+        elif role == "hr":
+            data["okrs"] = self._market.okrs
+            data["blockers"] = self._market.blockers
+            data["team_velocity"] = self._market.team_velocity
+            data["contractors"] = self._market.contractors
+            data["backlog_size"] = len(self._market.backlog)
+            data["bug_count"] = len(self._market.bug_reports)
+
+        elif role == "customer":
+            data["shipped_features"] = [
+                {"name": f.name, "description": f.description}
+                for f in self._market.shipped_features()
+            ]
+            data["product_stability"] = self._market.product_stability
+            data["nps_score"] = self._market.nps_score
+            data["satisfaction"] = self._market.customer_satisfaction
+            data["content_available"] = [
+                {"title": p.title, "type": p.content_type}
+                for p in self._market.content_pieces if p.published
+            ]
+            data["deals_won"] = [c.name for c in self._market.customers if c.stage == "closed_won"]
+            data["bug_reports"] = self._market.bug_reports[:5]
 
         return data
 

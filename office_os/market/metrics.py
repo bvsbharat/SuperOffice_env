@@ -74,6 +74,33 @@ class RewardCalculator:
             if "Published" in detail:
                 reward += 0.5
 
+        elif agent_id == "ceo":
+            # Reward for setting OKRs and strategic actions
+            if action == "SET_OKRS":
+                reward += 1.0
+            elif action == "SEND_DIRECTIVE":
+                reward += 0.3
+
+        elif agent_id == "hr":
+            # Reward for boosting velocity
+            if "Velocity" in detail or "velocity" in detail:
+                reward += 1.0
+            elif action == "PLAN_SPRINT":
+                reward += 0.5
+            elif action == "RESOLVE_BLOCKER":
+                reward += 1.5
+
+        elif agent_id == "customer":
+            # Reward for useful engagement
+            if action == "REFER_LEAD" and "New lead" in detail:
+                reward += 2.0
+            elif action == "RENEW_CONTRACT" and "renewed" in detail:
+                reward += 3.0
+            elif action == "EVALUATE_PRODUCT":
+                reward += 0.3
+            elif action == "GIVE_FEEDBACK":
+                reward += 0.5
+
         return reward
 
     def _kpi_delta_reward(self, agent_id: str, prev: dict, current: dict) -> float:

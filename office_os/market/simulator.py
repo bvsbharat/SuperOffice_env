@@ -104,6 +104,18 @@ class MarketSimulator:
         elif action_type == "COLLECT_FEEDBACK":
             sm.post(agent_id, "insight", f"Feedback: {result['detail']}", day, turn)
 
+        # CEO directives → whole team
+        elif action_type in ("SET_OKRS", "SEND_DIRECTIVE", "PIVOT"):
+            sm.post(agent_id, "alert", f"CEO: {result['detail']}", day, turn)
+
+        # HR updates → team visibility
+        elif action_type in ("PLAN_SPRINT", "RESOLVE_BLOCKER", "HIRE_CONTRACTOR"):
+            sm.post(agent_id, "update", f"HR: {result['detail']}", day, turn)
+
+        # Customer signals → critical for whole team
+        elif action_type in ("EVALUATE_PRODUCT", "REQUEST_FEATURE", "ESCALATE_ISSUE", "REFER_LEAD"):
+            sm.post(agent_id, "insight", f"Customer: {result['detail']}", day, turn)
+
     # ── Dev actions ──────────────────────────────────────────────
 
     def _handle_dev(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
@@ -423,6 +435,113 @@ class MarketSimulator:
         improvement = self.state._rng.uniform(0.05, 0.2)
         piece.quality = min(1.0, piece.quality + improvement)
         result["detail"] = f"Revised '{piece.title}'. Quality: {piece.quality:.2f} (+{improvement:.2f})"
+        return result
+
+    # ── CEO actions ────────────────────────────────────────────
+
+    def _handle_ceo(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
+        if action_type == "SET_OKRS":
+            okr = {"objective": target, "key_results": parameters.get("key_results", [target]), "day": self.state.day}
+            self.state.okrs.append(okr)
+            result["detail"] = f"Set OKR: {target}"
+        elif action_type == "ALLOCATE_BUDGET":
+            amount = parameters.get("amount", 0)
+            dept = target.lower()
+            result["detail"] = f"Budget directive: allocate ${amount:,.0f} focus to {dept}"
+        elif action_type == "REVIEW_STRATEGY":
+            result["detail"] = f"Strategy review on '{target}': assessed KPIs and team alignment"
+        elif action_type == "PIVOT":
+            result["detail"] = f"Pivot decision: {target}. Team notified to adjust priorities."
+            self.state.shared_memory.post("ceo", "alert", f"PIVOT: {target}", self.state.day, self.state.turn)
+        elif action_type == "SEND_DIRECTIVE":
+            result["detail"] = f"Directive sent: {target}"
+        elif action_type == "APPROVE_INITIATIVE":
+            result["detail"] = f"Approved initiative: {target}"
+        return result
+
+    # ── HR / Planning actions ─────────────────────────────────
+
+    def _handle_hr(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
+        if action_type == "PLAN_SPRINT":
+            result["detail"] = f"Sprint planned: {target}. Dev priorities updated."
+            self.state.team_velocity = min(2.0, self.state.team_velocity + 0.05)
+        elif action_type == "TRACK_OKRS":
+            completed = len([o for o in self.state.okrs if o.get("completed")])
+            total = len(self.state.okrs)
+            result["detail"] = f"OKR tracking: {completed}/{total} completed"
+        elif action_type == "RESOLVE_BLOCKER":
+            blocker = next((b for b in self.state.blockers if b.get("name") == target), None)
+            if blocker:
+                self.state.blockers.remove(blocker)
+                self.state.team_velocity = min(2.0, self.state.team_velocity + 0.1)
+                result["detail"] = f"Resolved blocker: {target}. Velocity +10%"
+            else:
+                result["detail"] = f"Addressed potential blocker: {target}"
+                self.state.team_velocity = min(2.0, self.state.team_velocity + 0.03)
+        elif action_type == "HIRE_CONTRACTOR":
+            if self.state.budget_remaining >= self.cfg.contractor_cost:
+                self.state.budget_remaining -= self.cfg.contractor_cost
+                self.state.contractors += 1
+                self.state.team_velocity = min(2.0, self.state.team_velocity + 0.15)
+                result["detail"] = f"Hired contractor for '{target}'. Velocity boosted. Cost: ${self.cfg.contractor_cost:,.0f}"
+            else:
+                result["success"] = False
+                result["detail"] = "Insufficient budget to hire contractor"
+        elif action_type == "PERFORMANCE_REVIEW":
+            self.state.team_velocity = min(2.0, self.state.team_velocity + 0.02)
+            result["detail"] = f"Performance review: {target}. Team morale improved."
+        elif action_type == "TEAM_SYNC":
+            self.state.team_velocity = min(2.0, self.state.team_velocity + 0.05)
+            result["detail"] = f"Team sync on '{target}'. Alignment improved."
+        return result
+
+    # ── Customer actions ──────────────────────────────────────
+
+    def _handle_customer(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
+        if action_type == "EVALUATE_PRODUCT":
+            shipped = len(self.state.shipped_features())
+            stability = self.state.product_stability
+            score = min(100, shipped * 15 + stability * 30 + self.state.brand_awareness * 0.3)
+            self.state.nps_score = round(score, 1)
+            self.state.customer_satisfaction = min(1.0, score / 100)
+            result["detail"] = f"Product evaluation: NPS={self.state.nps_score:.0f}, satisfaction={self.state.customer_satisfaction:.2f} ({shipped} features, {stability:.0%} stable)"
+        elif action_type == "REQUEST_FEATURE":
+            self.state.backlog.append({
+                "id": str(uuid4())[:8], "name": target,
+                "description": parameters.get("description", target),
+                "priority": "high", "requested_by": "customer",
+            })
+            result["detail"] = f"Customer requested feature: {target}"
+        elif action_type == "GIVE_FEEDBACK":
+            fb = {"customer": "customer_agent", "content": parameters.get("feedback", target), "day": self.state.day}
+            self.state.feedback.append(fb)
+            result["detail"] = f"Customer feedback: {parameters.get('feedback', target)[:60]}"
+        elif action_type == "REFER_LEAD":
+            new_customer = self.state.maybe_spawn_customer()
+            if new_customer:
+                new_customer.source = "referral"
+                new_customer.previous_stage = "visitor"
+                new_customer.stage = "lead"
+                self.state._stage_transitions.append(new_customer)
+                result["detail"] = f"Customer referral! New lead: {new_customer.name}"
+            else:
+                result["detail"] = "Referral noted, lead will arrive soon"
+        elif action_type == "ESCALATE_ISSUE":
+            self.state.bug_reports.append({"id": str(uuid4())[:8], "name": target, "severity": "high", "reported_by": "customer"})
+            self.state.customer_satisfaction = max(0.0, self.state.customer_satisfaction - 0.1)
+            self.state.nps_score = max(0, self.state.nps_score - 5)
+            result["detail"] = f"Customer escalated issue: {target}. Satisfaction dropped."
+        elif action_type == "RENEW_CONTRACT":
+            won = [c for c in self.state.customers if c.stage == "closed_won"]
+            if won:
+                customer = won[0]
+                renewal_rev = customer.budget * 0.1  # 10% renewal bonus
+                self.state.revenue += renewal_rev
+                self.state.total_revenue += renewal_rev
+                self.state.customer_satisfaction = min(1.0, self.state.customer_satisfaction + 0.1)
+                result["detail"] = f"Contract renewed for {customer.name}! +${renewal_rev:,.0f} revenue"
+            else:
+                result["detail"] = "No active contracts to renew"
         return result
 
     def advance(self):
