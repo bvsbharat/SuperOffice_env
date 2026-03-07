@@ -25,6 +25,14 @@ OpenEnv builds on **Gymnasium**, the standard RL environment interface.
 - **GitHub**: https://github.com/Farama-Foundation/Gymnasium
 - **Key Concepts**: https://gymnasium.farama.org/content/basic_usage/
 
+## Tutorials & Learning Resources
+
+### Interactive Notebooks & Examples
+- **OpenEnv + GPT OSS Reinforcement Learning (2048 Game)**: 
+  [Google Colab Notebook](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/OpenEnv_gpt_oss_(20B)_Reinforcement_Learning_2048_Game.ipynb)
+  - Complete example training an open-source GPT model using OpenEnv in a 2048 game environment
+  - Covers RL training loop, environment interaction, and agent learning
+
 ## Agent Development Frameworks
 
 ### LangGraph (Multi-Agent Orchestration)
@@ -50,21 +58,25 @@ OpenEnv builds on **Gymnasium**, the standard RL environment interface.
 | **PyTorch** | Deep Learning | `pip install torch` |
 | **Matplotlib** | Visualization | `pip install matplotlib` |
 | **Stable-Baselines3** | RL Algorithms | `pip install stable-baselines3` |
-| **Ray** | Distributed Computing | `pip install ray` |
 
-## Learning Resources
+## Learning Paths
 
-### Online Courses
-- **OpenAI Spinning Up**: https://spinningup.openai.com/
-- **Deep RL Course**: https://huggingface.co/deep-rl-course/
-- **MIT OpenCourseWare**: https://ocw.mit.edu/courses/6-s191-introduction-to-deep-learning/
+### Beginner
+1. Start with Gymnasium basics
+2. Understand OpenEnv environment API
+3. Run a simple agent in OpenEnv
 
-## Tips for Success
+### Intermediate
+1. Implement custom environments using OpenEnv
+2. Train agents with Stable-Baselines3
+3. Integrate with LangChain for multi-agent systems
 
-1. **Start Small**: Begin with simple environments
-2. **Test Often**: Run experiments frequently
-3. **Document Code**: Write clear docstrings
-4. **Version Your Work**: Commit regularly to git
-5. **Join Community**: Ask questions in Discord!
+### Advanced
+1. Fine-tune models with OpenEnv environments
+2. Build complex multi-agent systems with LangGraph
+3. Deploy agents to production
 
-For latest updates, check https://meta-pytorch.github.io/OpenEnv
+---
+
+**Last Updated**: March 2026
+**OpenEnv Version**: Latest (Check PyPI for current version)
