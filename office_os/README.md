@@ -11,45 +11,63 @@ tags:
   - openenv
 ---
 
-# Office Os Environment
+# MarketVille — Multi-Agent Startup Simulation
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+A Smallville-style multi-agent simulation where 4 AI agents (Dev, Marketing, Sales, Content Creator) autonomously collaborate to grow a SaaS startup over 90 simulated days. Built on Meta's [OpenEnv](https://github.com/meta-pytorch/openenv) framework.
 
-## Quick Start
+## Run the Simulation
 
-The simplest way to use the Office Os environment is through the `OfficeOsEnv` class:
+```bash
+export ANTHROPIC_API_KEY=your-key
+python run_agents.py --local --days 10 --model claude-haiku-4-5-20251001
+```
+
+Options:
+- `--local` — run directly without a server
+- `--server http://localhost:8000` — run against the OpenEnv server
+- `--days N` — number of simulated days (default: 90)
+- `--model MODEL` — Claude model to use (default: claude-sonnet-4-20250514)
+- `--reflect-every N` — agent reflection frequency in turns (default: 10)
+
+## How It Works
+
+4 LLM-powered agents take turns operating a startup:
+
+| Agent | Role | Key Actions |
+|-------|------|-------------|
+| Alex (Dev) | Build product | BUILD_FEATURE, FIX_BUG, SHIP_RELEASE |
+| Jordan (Marketing) | Drive growth | LAUNCH_CAMPAIGN, RUN_AD, OPTIMIZE_FUNNEL |
+| Sam (Sales) | Close deals | QUALIFY_LEAD, RUN_DEMO, CLOSE_DEAL |
+| Casey (Content) | Create content | WRITE_BLOG, WRITE_CASE_STUDY, WRITE_SOCIAL_POST |
+
+Customers flow through a pipeline: `visitor → lead → qualified → demo → proposal → negotiation → closed_won`
+
+Deals can be closed with contract tiers: **monthly** (1x reward), **6-month** (2x), **annual** (3x).
+
+Each agent has a Smallville-style memory stream (observations, reflections, plans) and receives asymmetric observations scoped to their role.
+
+### Real-World Integration
+
+Enable Google Sheets sync to watch the simulation live in a spreadsheet — see [Sheets Setup](integrations/SHEETS_SETUP.md).
+
+## Quick Start (Client API)
+
+Connect to a running MarketVille server:
 
 ```python
 from office_os import OfficeOsAction, OfficeOsEnv
 
-try:
-    # Create environment from Docker image
-    office_osenv = OfficeOsEnv.from_docker_image("office_os-env:latest")
+with OfficeOsEnv(base_url="http://localhost:8000") as env:
+    result = env.reset()
+    print(f"Day {result.observation.day}, Budget: ${result.observation.budget_remaining}")
 
-    # Reset
-    result = office_osenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
-
-    for msg in messages:
-        result = office_osenv.step(OfficeOsAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
-
-finally:
-    # Always clean up
-    office_osenv.close()
+    result = env.step(OfficeOsAction(
+        agent_id="dev",
+        action_type="BUILD_FEATURE",
+        target="SSO Integration",
+    ))
+    print(f"Result: {result.observation.last_action_result['detail']}")
 ```
-
-That's it! The `OfficeOsEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
 
 ## Building the Docker Image
 
