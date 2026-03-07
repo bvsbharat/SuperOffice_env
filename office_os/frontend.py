@@ -297,69 +297,107 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
     message_log = []
     reward_totals = {role: 0.0 for role in AGENT_ROLES}
 
+    # Activity log file
+    activity_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "activity.log")
+    activity_file = open(activity_log_path, "w")
+    activity_file.write(f"=== Office OS Simulation Log ===\n")
+    activity_file.write(f"Model: {model} | Provider: {provider} | Days: {days}\n\n")
+
     turn = 0
     role_index = 0
 
-    with Live(build_layout(env._market, turn, action_log, message_log, reward_totals),
-              console=console, refresh_per_second=4, screen=True) as live:
-        while not obs.done and obs.day <= days:
-            role = AGENT_ROLES[role_index % len(AGENT_ROLES)]
-            agent = agents[role]
-            role_index += 1
-            turn += 1
+    try:
+        with Live(build_layout(env._market, turn, action_log, message_log, reward_totals),
+                  console=console, refresh_per_second=4, screen=True) as live:
+            while not obs.done and obs.day <= days:
+                role = AGENT_ROLES[role_index % len(AGENT_ROLES)]
+                agent = agents[role]
+                role_index += 1
+                turn += 1
 
-            # Convert obs for agent
-            obs_dict = {
-                "agent_id": obs.agent_id, "day": obs.day, "phase": obs.phase,
-                "kpis": obs.kpis, "budget_remaining": obs.budget_remaining,
-                "recent_actions": obs.recent_actions, "messages": obs.messages,
-                "events": obs.events, "role_data": obs.role_data,
-                "last_action_result": obs.last_action_result,
-                "done": obs.done, "reward": obs.reward,
-            }
+                # Convert obs for agent
+                obs_dict = {
+                    "agent_id": obs.agent_id, "day": obs.day, "phase": obs.phase,
+                    "kpis": obs.kpis, "budget_remaining": obs.budget_remaining,
+                    "recent_actions": obs.recent_actions, "messages": obs.messages,
+                    "events": obs.events, "role_data": obs.role_data,
+                    "last_action_result": obs.last_action_result,
+                    "done": obs.done, "reward": obs.reward,
+                }
 
-            # Agent decides
-            action_dict = agent.decide(obs_dict, turn)
+                # Agent decides
+                action_dict = agent.decide(obs_dict, turn)
 
-            # Execute
-            action = OfficeOsAction(
-                agent_id=role,
-                action_type=action_dict["action_type"],
-                target=action_dict.get("target", ""),
-                parameters=action_dict.get("parameters", {}),
-                reasoning=action_dict.get("reasoning", ""),
-                message=action_dict.get("message"),
-            )
-            obs = env.step(action)
+                # Execute
+                action = OfficeOsAction(
+                    agent_id=role,
+                    action_type=action_dict["action_type"],
+                    target=action_dict.get("target", ""),
+                    parameters=action_dict.get("parameters", {}),
+                    reasoning=action_dict.get("reasoning", ""),
+                    message=action_dict.get("message"),
+                )
+                obs = env.step(action)
 
-            # Track results
-            result = obs.last_action_result
-            action_log.append({
-                "role": role,
-                "action": action_dict["action_type"],
-                "target": action_dict.get("target", ""),
-                "reasoning": action_dict.get("reasoning", ""),
-                "success": result.get("success", False),
-                "detail": result.get("detail", ""),
-            })
+                # Track results
+                result = obs.last_action_result
+                success_str = "OK" if result.get("success", False) else "FAIL"
+                action_log.append({
+                    "role": role,
+                    "action": action_dict["action_type"],
+                    "target": action_dict.get("target", ""),
+                    "reasoning": action_dict.get("reasoning", ""),
+                    "success": result.get("success", False),
+                    "detail": result.get("detail", ""),
+                })
 
-            # Track messages
-            if action_dict.get("message") and ":" in action_dict["message"]:
-                to_agent = action_dict["message"].split(":")[0].strip()
-                msg_content = ":".join(action_dict["message"].split(":")[1:]).strip()
-                message_log.append({"from": role, "to": to_agent, "content": msg_content})
+                # Write to activity log file
+                activity_file.write(
+                    f"[Day {obs.day} T{turn}] {ROLE_NAMES[role]} {success_str} "
+                    f"{action_dict['action_type']} -> {action_dict.get('target', '')}\n"
+                    f"  Detail: {result.get('detail', '')}\n"
+                    f"  Reasoning: {action_dict.get('reasoning', '')}\n"
+                    f"  Reward: {obs.reward:+.2f} (total: {reward_totals[role] + obs.reward:+.2f})\n"
+                )
+                if action_dict.get("message"):
+                    activity_file.write(f"  Message: {action_dict['message']}\n")
+                activity_file.write("\n")
+                activity_file.flush()
 
-            # Track rewards
-            reward_totals[role] += obs.reward
+                # Track messages
+                if action_dict.get("message") and ":" in action_dict["message"]:
+                    to_agent = action_dict["message"].split(":")[0].strip()
+                    msg_content = ":".join(action_dict["message"].split(":")[1:]).strip()
+                    message_log.append({"from": role, "to": to_agent, "content": msg_content})
 
-            # Periodic reflection
-            if turn % (10 * len(AGENT_ROLES)) == 0:
-                for r, a in agents.items():
-                    a.reflect(turn, obs_dict)
+                # Track rewards
+                reward_totals[role] += obs.reward
 
-            # Update display
-            live.update(build_layout(env._market, turn, action_log, message_log, reward_totals))
-            time.sleep(speed)
+                # Periodic reflection
+                if turn % (10 * len(AGENT_ROLES)) == 0:
+                    for r, a in agents.items():
+                        a.reflect(turn, obs_dict)
+
+                # Update display
+                live.update(build_layout(env._market, turn, action_log, message_log, reward_totals))
+                time.sleep(speed)
+    finally:
+        # Write final summary to log
+        activity_file.write(f"\n{'='*60}\n")
+        activity_file.write(f"FINAL SUMMARY\n{'='*60}\n")
+        kpis = env._market.get_all_kpis()
+        activity_file.write(f"Total Revenue: ${kpis['total_revenue']:,.0f}\n")
+        activity_file.write(f"Features Shipped: {kpis['features_shipped']}\n")
+        activity_file.write(f"Content Published: {kpis['content_published']}\n")
+        activity_file.write(f"Budget: ${kpis['budget_remaining']:,.0f}\n")
+        activity_file.write(f"\nRewards:\n")
+        for role in AGENT_ROLES:
+            activity_file.write(f"  {ROLE_NAMES[role]}: {reward_totals[role]:+.1f}\n")
+        activity_file.write(f"\nShared Memory ({len(env._market.shared_memory.entries)} entries):\n")
+        for e in env._market.shared_memory.entries:
+            activity_file.write(f"  [{e.author}] ({e.entry_type}) {e.content}\n")
+        activity_file.close()
+        logger.info(f"Activity log written to {activity_log_path}")
 
     # Final screen
     console.clear()
