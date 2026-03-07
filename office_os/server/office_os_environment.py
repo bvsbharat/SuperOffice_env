@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-MarketVille Environment Implementation.
+Office OS Environment Implementation.
 
 A Smallville-style multi-agent startup simulation where 4 agents
 (Dev, Marketing, Sales, Content Creator) collaborate to grow a company
@@ -28,7 +28,7 @@ from integrations.sheets import GoogleSheetsSync
 
 class OfficeOsEnvironment(Environment):
     """
-    MarketVille: Multi-agent startup simulation environment.
+    Office OS: Multi-agent startup simulation environment.
 
     4 agents (dev, marketing, sales, content) take turns executing actions
     in a simulated startup. Customers flow through a pipeline from visitor
@@ -75,11 +75,15 @@ class OfficeOsEnvironment(Environment):
             kpis=self._market.get_all_kpis(),
             budget_remaining=self._market.budget_remaining,
             recent_actions=[],
-            messages=[{"from": "system", "content": "MarketVille simulation started. Day 1 begins."}],
+            messages=[{"from": "system", "content": "Office OS simulation started. Day 1 begins. You have 2 leads in the pipeline ready to qualify!"}],
             events=[],
             role_data={
                 "available_roles": ["dev", "marketing", "sales", "content"],
                 "backlog": self._market.backlog,
+                "pipeline": [
+                    {"name": c.name, "stage": c.stage, "budget": c.budget, "pain_point": c.pain_point}
+                    for c in self._market.customers
+                ],
             },
             last_action_result={},
             done=False,
@@ -158,8 +162,9 @@ class OfficeOsEnvironment(Environment):
         """Build role-scoped observation for the acting agent."""
         role = agent_id
 
-        # Role-specific data
+        # Role-specific data + shared memory
         role_data = self._get_role_data(role)
+        role_data["shared_memory"] = self._market.shared_memory.recent(15)
 
         return OfficeOsObservation(
             agent_id=agent_id,
@@ -185,9 +190,41 @@ class OfficeOsEnvironment(Environment):
         )
 
     def _get_role_data(self, role: str) -> dict:
-        """Get role-specific observation data."""
+        """Get role-specific observation data + cross-team visibility."""
         data: dict = {"available_actions": ROLE_ACTIONS.get(role, [])}
 
+        # ── Cross-team shared state (A2A visibility) ──
+        # Every agent sees a summary of what the other teams are doing
+        data["team_status"] = {
+            "dev": {
+                "building": [
+                    {"name": f.name, "turns_remaining": f.turns_remaining}
+                    for f in self._market.features if not f.shipped
+                ],
+                "shipped": [f.name for f in self._market.shipped_features()],
+            },
+            "sales": {
+                "pipeline": [
+                    {"name": c.name, "stage": c.stage, "budget": c.budget, "pain_point": c.pain_point}
+                    for c in self._market.customers
+                    if c.stage not in ("closed_won", "closed_lost", "churned")
+                ],
+                "deals_won": [c.name for c in self._market.customers if c.stage == "closed_won"],
+            },
+            "marketing": {
+                "active_campaigns": len([c for c in self._market.campaigns if c.active]),
+                "conversion_rate": round(self._market.conversion_rate * 100, 2),
+                "traffic": self._market.website_traffic,
+            },
+            "content": {
+                "published": [
+                    {"title": p.title, "type": p.content_type}
+                    for p in self._market.content_pieces if p.published
+                ],
+            },
+        }
+
+        # ── Role-specific deep data ──
         if role == "dev":
             data["backlog"] = self._market.backlog[:5]
             data["bug_reports"] = self._market.bug_reports[:5]

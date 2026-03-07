@@ -1,4 +1,4 @@
-"""Constants and configuration for the MarketVille simulation."""
+"""Constants and configuration for the Office OS simulation."""
 
 from dataclasses import dataclass, field
 
@@ -98,15 +98,15 @@ class Config:
     initial_brand_awareness: float = 10.0
 
     # Customer generation
-    min_days_between_customers: int = 2
-    max_days_between_customers: int = 5
+    min_days_between_customers: int = 1
+    max_days_between_customers: int = 3
     lead_decay_days: int = 5  # Leads not contacted within this many days are lost
 
     # Event probability per day
     event_probability: float = 0.15
 
     # Feature development
-    feature_build_turns: int = 5  # Turns to build a feature
+    feature_build_turns: int = 3  # Turns to build a feature
     bug_fix_turns: int = 2
 
     # Content

@@ -1,4 +1,4 @@
-"""Tests for the MarketVille environment."""
+"""Tests for the Office OS environment."""
 
 import sys
 import os

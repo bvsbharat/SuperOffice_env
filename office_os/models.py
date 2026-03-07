@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-Data models for the MarketVille Environment.
+Data models for the Office OS Environment.
 
 A Smallville-style multi-agent startup simulation where Dev, Marketing,
 Sales, and Content Creator agents collaborate to grow a company.
@@ -19,7 +19,7 @@ from openenv.core.env_server.types import Action, Observation
 
 
 class OfficeOsAction(Action):
-    """A single agent's action for one turn in the MarketVille simulation."""
+    """A single agent's action for one turn in the Office OS simulation."""
 
     agent_id: str = Field(
         ..., description="Which agent is acting: dev, marketing, sales, content"

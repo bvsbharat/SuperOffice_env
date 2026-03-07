@@ -1,4 +1,4 @@
-"""Real-world integrations for MarketVille."""
+"""Real-world integrations for Office OS."""
 
 from .sheets import GoogleSheetsSync
 

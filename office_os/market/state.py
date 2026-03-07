@@ -1,4 +1,4 @@
-"""Market state management for MarketVille."""
+"""Market state management for Office OS."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class Feature:
     id: str
     name: str
     description: str
-    turns_remaining: int = 5
+    turns_remaining: int = 3
     shipped: bool = False
     stability: float = 1.0  # 0-1, how stable this feature is
 
@@ -97,6 +97,59 @@ class Message:
 
 
 @dataclass
+class SharedMemoryEntry:
+    """An entry in the shared team knowledge board."""
+
+    author: str          # agent role who posted
+    entry_type: str      # "update", "request", "insight", "alert"
+    content: str         # the knowledge/message
+    day: int
+    turn: int
+
+
+@dataclass
+class SharedMemory:
+    """
+    Shared team knowledge board — all agents read and write.
+
+    Inspired by colony-collapse's SharedKnowledge pattern.
+    Agents post updates, requests, and insights here.
+    All entries are visible to all agents.
+    """
+
+    entries: list[SharedMemoryEntry] = field(default_factory=list)
+
+    def post(self, author: str, entry_type: str, content: str, day: int, turn: int):
+        """Add an entry to shared memory."""
+        self.entries.append(SharedMemoryEntry(
+            author=author, entry_type=entry_type,
+            content=content, day=day, turn=turn,
+        ))
+
+    def recent(self, last_n: int = 15) -> list[dict]:
+        """Get recent entries as dicts for observation."""
+        return [
+            {"author": e.author, "type": e.entry_type, "content": e.content, "day": e.day}
+            for e in self.entries[-last_n:]
+        ]
+
+    def by_type(self, entry_type: str) -> list[dict]:
+        """Get entries filtered by type."""
+        return [
+            {"author": e.author, "content": e.content, "day": e.day}
+            for e in self.entries if e.entry_type == entry_type
+        ]
+
+    def requests_for(self, role: str) -> list[dict]:
+        """Get open requests targeted at a specific role."""
+        return [
+            {"from": e.author, "content": e.content, "day": e.day}
+            for e in self.entries
+            if e.entry_type == "request" and role in e.content.lower()
+        ]
+
+
+@dataclass
 class MarketState:
     """Full simulation state."""
 
@@ -131,6 +184,7 @@ class MarketState:
     # Communication
     messages: list[Message] = field(default_factory=list)
     recent_actions: list[dict] = field(default_factory=list)
+    shared_memory: SharedMemory = field(default_factory=SharedMemory)
 
     # Events
     active_events: list[dict] = field(default_factory=list)
@@ -138,7 +192,7 @@ class MarketState:
     # Tracking
     _stage_transitions: list[Customer] = field(default_factory=list)
     _customer_pool_index: int = 0
-    _next_customer_day: int = 3
+    _next_customer_day: int = 1
     _rng: random.Random = field(default_factory=lambda: random.Random())
 
     @classmethod
@@ -160,6 +214,22 @@ class MarketState:
             {"id": str(uuid4())[:8], "name": "API v2", "description": "RESTful API improvements", "priority": "medium", "requested_by": "market"},
             {"id": str(uuid4())[:8], "name": "Dashboard Redesign", "description": "New analytics dashboard", "priority": "low", "requested_by": "market"},
         ]
+        # Seed 2 initial customers already in the pipeline as leads
+        for template in SAMPLE_CUSTOMERS[:2]:
+            customer = Customer(
+                id=str(uuid4())[:8],
+                name=template["name"],
+                company_size=template["company_size"],
+                industry=template["industry"],
+                budget=template["budget"],
+                pain_point=template["pain_point"],
+                source="organic",
+                stage="lead",
+                created_day=1,
+                last_contacted_day=1,
+            )
+            state.customers.append(customer)
+        state._customer_pool_index = 2
         return state
 
     def get_all_kpis(self) -> dict:
@@ -214,11 +284,11 @@ class MarketState:
         return self.recent_actions[-10:]
 
     def get_messages_for(self, agent_id: str) -> list[dict]:
-        """Get unread messages for an agent."""
+        """Get all recent messages (shared team channel). All agents see everything."""
         return [
-            {"from": m.from_agent, "content": m.content, "day": m.day}
+            {"from": m.from_agent, "to": m.to_agent, "content": m.content, "day": m.day}
             for m in self.messages
-            if m.to_agent == agent_id and m.day >= self.day - 1
+            if m.day >= self.day - 1
         ]
 
     def shipped_features(self) -> list[Feature]:

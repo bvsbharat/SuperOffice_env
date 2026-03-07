@@ -1,4 +1,4 @@
-"""Market simulation engine for MarketVille."""
+"""Market simulation engine for Office OS."""
 
 from .state import MarketState
 from .config import Config

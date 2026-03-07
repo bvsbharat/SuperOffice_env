@@ -1,4 +1,4 @@
-"""Reward calculation for MarketVille agents."""
+"""Reward calculation for Office OS agents."""
 
 from __future__ import annotations
 

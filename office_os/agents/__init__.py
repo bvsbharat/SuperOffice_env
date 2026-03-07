@@ -1,4 +1,4 @@
-"""Smallville-style agents for MarketVille."""
+"""Smallville-style agents for Office OS."""
 
 from .base_agent import BaseAgent
 from .memory import MemoryStream

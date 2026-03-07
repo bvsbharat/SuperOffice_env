@@ -33,7 +33,7 @@ class MarketSimulator:
             result["detail"] = f"Action {action_type} not available for role {role}"
             return result
 
-        # Store message if provided
+        # Store message if provided — also post to shared memory
         if message and ":" in message:
             to_agent = message.split(":")[0].strip().lower()
             msg_content = ":".join(message.split(":")[1:]).strip()
@@ -44,6 +44,12 @@ class MarketSimulator:
                 day=self.state.day,
                 turn=self.state.turn,
             ))
+            # A2A: all messages also go to shared memory board
+            self.state.shared_memory.post(
+                author=agent_id, entry_type="message",
+                content=f"@{to_agent}: {msg_content}",
+                day=self.state.day, turn=self.state.turn,
+            )
 
         # Dispatch to role-specific handler
         handler = getattr(self, f"_handle_{role}", None)
@@ -51,6 +57,10 @@ class MarketSimulator:
             result = handler(action_type, target, parameters, result)
         else:
             result["detail"] = "Action processed"
+
+        # Auto-post significant results to shared memory
+        if result["success"]:
+            self._post_to_shared_memory(agent_id, action_type, target, result)
 
         # Record action
         self.state.recent_actions.append({
@@ -64,6 +74,35 @@ class MarketSimulator:
         })
 
         return result
+
+    def _post_to_shared_memory(self, agent_id: str, action_type: str, target: str, result: dict):
+        """Auto-post significant events to the shared team memory board."""
+        sm = self.state.shared_memory
+        day, turn = self.state.day, self.state.turn
+
+        # Dev ships features → big update for entire team
+        if action_type == "SHIP_RELEASE" and "Shipped" in result.get("detail", ""):
+            sm.post(agent_id, "update", f"SHIPPED: {result['detail']}", day, turn)
+        elif action_type == "BUILD_FEATURE":
+            sm.post(agent_id, "update", f"Building: {result['detail']}", day, turn)
+
+        # Sales pipeline movements → team should know
+        elif action_type in ("QUALIFY_LEAD", "RUN_DEMO", "SEND_PROPOSAL"):
+            sm.post(agent_id, "update", f"Pipeline: {result['detail']}", day, turn)
+        elif action_type == "CLOSE_DEAL":
+            sm.post(agent_id, "alert", f"DEAL: {result['detail']}", day, turn)
+
+        # Marketing campaigns → team visibility
+        elif action_type == "LAUNCH_CAMPAIGN":
+            sm.post(agent_id, "update", f"Campaign: {result['detail']}", day, turn)
+
+        # Content published → Sales and Marketing should know
+        elif action_type in ("WRITE_BLOG", "WRITE_CASE_STUDY", "WRITE_SOCIAL_POST"):
+            sm.post(agent_id, "update", f"Published: {result['detail']}", day, turn)
+
+        # Feedback collected → Dev should see
+        elif action_type == "COLLECT_FEEDBACK":
+            sm.post(agent_id, "insight", f"Feedback: {result['detail']}", day, turn)
 
     # ── Dev actions ──────────────────────────────────────────────
 
@@ -240,16 +279,16 @@ class MarketSimulator:
             result["success"] = False
             result["detail"] = f"{customer.name} must be 'qualified' for demo, is '{customer.stage}'"
             return result
-        # Check if we have features matching their pain point
-        matching_features = [f for f in self.state.shipped_features() if customer.pain_point.lower() in f.description.lower() or f.name.lower() in customer.pain_point.lower()]
+        # Check if we have any shipped features to demo
+        shipped = self.state.shipped_features()
         customer.previous_stage = customer.stage
         customer.stage = "demo"
         customer.last_contacted_day = self.state.day
         self.state._stage_transitions.append(customer)
-        if matching_features:
-            result["detail"] = f"Demo for {customer.name} -- showed features: {[f.name for f in matching_features]}. Strong match!"
+        if shipped:
+            result["detail"] = f"Demo for {customer.name} -- showed {len(shipped)} feature(s): {[f.name for f in shipped]}"
         else:
-            result["detail"] = f"Demo for {customer.name} -- no features match their pain point '{customer.pain_point}'"
+            result["detail"] = f"Demo for {customer.name} -- no shipped features yet, generic demo"
         return result
 
     def _sales_proposal(self, customer: Customer, result: dict) -> dict:
@@ -276,12 +315,13 @@ class MarketSimulator:
             tier_key = "monthly"
         tier = CONTRACT_TIERS[tier_key]
 
-        # Close probability based on feature match + content touchpoints
+        # Close probability based on shipped features + content touchpoints
         # Longer contracts are harder to close
         base_prob = 0.4 - (tier["months"] - 1) * 0.015
-        matching_features = [f for f in self.state.shipped_features() if customer.pain_point.lower() in f.description.lower() or f.name.lower() in customer.pain_point.lower()]
-        if matching_features:
-            base_prob += 0.3
+        shipped = self.state.shipped_features()
+        if shipped:
+            # More shipped features = higher close probability (up to +0.3)
+            base_prob += min(0.3, len(shipped) * 0.1)
         if customer.content_touchpoints:
             base_prob += 0.1 * min(len(customer.content_touchpoints), 3)
 

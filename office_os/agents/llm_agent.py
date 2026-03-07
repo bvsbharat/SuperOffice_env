@@ -1,11 +1,13 @@
-"""LLM-powered agent that uses Anthropic Claude to make decisions."""
+"""LLM-powered agent using Pydantic AI for structured, reliable decisions."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-from typing import Any
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
 from .prompts import ROLE_PROMPTS
@@ -13,71 +15,176 @@ from .prompts import ROLE_PROMPTS
 logger = logging.getLogger(__name__)
 
 
-def _get_client():
-    """Lazy-load Anthropic client."""
+# ── Structured output models ─────────────────────────────────────────
+
+class AgentAction(BaseModel):
+    """Structured action output from the LLM agent."""
+    action_type: str = Field(description="Action to take, must be from the allowed actions list")
+    target: str = Field(default="", description="What the action applies to")
+    parameters: dict = Field(default_factory=dict, description="Action-specific parameters")
+    reasoning: str = Field(default="", description="Brief explanation of why this action")
+    message: Optional[str] = Field(default=None, description="Optional message to another agent: 'role: text'")
+
+
+class ReflectionOutput(BaseModel):
+    """Structured reflection output."""
+    insights: list[str] = Field(description="1-3 concise insights from recent events")
+
+
+# ── Bedrock/Anthropic model name helper ──────────────────────────────
+
+def _build_model_name(model: str, provider: str, aws_region: str) -> str:
+    """Build the pydantic-ai model string."""
+    if provider == "bedrock":
+        # pydantic-ai uses 'bedrock:model-id' format
+        # but we'll use anthropic directly with our own client
+        return model
+    return model
+
+
+def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
+    """Lazy-load the appropriate Anthropic client."""
     try:
         import anthropic
-        return anthropic.Anthropic()
     except ImportError:
-        raise ImportError("anthropic is required for LLM agents. Install with: pip install anthropic")
+        raise ImportError("anthropic is required. Install with: pip install anthropic")
 
+    if provider == "bedrock":
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+        session_token = os.environ.get("AWS_SESSION_TOKEN")
+
+        kwargs = {"aws_region": aws_region}
+        if access_key:
+            kwargs["aws_access_key"] = access_key
+        if secret_key:
+            kwargs["aws_secret_key"] = secret_key
+        if session_token:
+            kwargs["aws_session_token"] = session_token
+
+        return anthropic.AnthropicBedrock(**kwargs)
+    return anthropic.Anthropic()
+
+
+# ── LLM Agent ────────────────────────────────────────────────────────
 
 class LLMAgent:
     """
-    An agent that uses Claude to decide actions based on observations.
+    Agent that uses Claude + Pydantic structured output for reliable decisions.
 
-    Wraps BaseAgent (memory/reflection) with LLM decision-making.
-    Each call to decide() sends the observation context to Claude and
-    parses the response into a valid action dict.
+    Uses Pydantic models to validate LLM output, with automatic retry
+    and fallback. Supports both Anthropic API and AWS Bedrock.
     """
 
-    def __init__(self, role: str, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
+                 provider: str = "anthropic", aws_region: str = "us-east-1"):
         self.role = role
         self.model = model
+        self.provider = provider
+        self.aws_region = aws_region
         self.base = BaseAgent(role=role)
         self.system_prompt = ROLE_PROMPTS[role]
         self._client = None
 
+        # Import role actions for validation
+        from market.config import ROLE_ACTIONS
+        self._allowed_actions = ROLE_ACTIONS.get(role, [])
+
     @property
     def client(self):
         if self._client is None:
-            self._client = _get_client()
+            self._client = _get_client(self.provider, self.aws_region)
         return self._client
 
     def decide(self, observation: dict, turn: int) -> dict:
-        """
-        Given an observation from the environment, decide on an action.
-
-        Returns a dict with: action_type, target, parameters, reasoning, message
-        """
+        """Decide on an action given an observation. Returns a validated action dict."""
         # Store observation in memory
         summary = self._summarize_observation(observation)
         self.base.observe(turn, summary, importance=5.0)
 
-        # Build the user message from the observation
+        # Build prompt
         user_msg = self._build_user_message(observation, turn)
 
-        # Call Claude
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=512,
-                system=self.system_prompt,
-                messages=[{"role": "user", "content": user_msg}],
-            )
-            raw_text = response.content[0].text.strip()
-            action = self._parse_action(raw_text)
-        except Exception as e:
-            logger.warning(f"LLM call failed for {self.role}: {e}")
-            action = self._fallback_action(observation)
+        # Call LLM with structured output + retry
+        action = None
+        for attempt in range(3):
+            try:
+                action = self._call_structured(user_msg)
+                # Validate action is allowed for this role
+                if action.action_type not in self._allowed_actions:
+                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying...")
+                    action = None
+                    continue
+                break
+            except Exception as e:
+                logger.warning(f"LLM attempt {attempt+1}/3 for {self.role}: {type(e).__name__}: {e}")
+                if attempt < 2:
+                    import time
+                    time.sleep(1)
 
-        # Store the decision as a plan
-        self.base.plan(turn, f"{action['action_type']} -> {action['target']}: {action.get('reasoning', '')}")
+        if action is None:
+            return self._fallback_action(observation)
 
-        return action
+        result = action.model_dump()
+
+        # Store decision as plan
+        self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
+        return result
+
+    def _call_structured(self, user_msg: str) -> AgentAction:
+        """Call Claude and parse response into a validated AgentAction."""
+        # Build the tool schema from AgentAction
+        tool_schema = AgentAction.model_json_schema()
+        # Remove title/description that aren't needed in the properties
+        properties = tool_schema.get("properties", {})
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            system=self.system_prompt,
+            messages=[{"role": "user", "content": user_msg}],
+            tools=[{
+                "name": "submit_action",
+                "description": f"Submit your chosen action. action_type MUST be one of: {', '.join(self._allowed_actions)}",
+                "input_schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": ["action_type"],
+                },
+            }],
+            tool_choice={"type": "tool", "name": "submit_action"},
+        )
+
+        # Extract tool use result
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "submit_action":
+                return AgentAction.model_validate(block.input)
+
+        # Fallback: try parsing text response
+        for block in response.content:
+            if hasattr(block, "text") and block.text:
+                return self._parse_text_response(block.text)
+
+        raise ValueError("No valid action in LLM response")
+
+    def _parse_text_response(self, raw: str) -> AgentAction:
+        """Parse a text response into AgentAction (fallback if tool_use fails)."""
+        text = raw.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            text = "\n".join(lines)
+
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            data = json.loads(text[start:end])
+            return AgentAction.model_validate(data)
+
+        raise ValueError(f"Could not parse action from text: {text[:200]}")
 
     def reflect(self, turn: int, observation: dict):
-        """Trigger a reflection cycle based on accumulated observations."""
+        """Trigger a reflection cycle using structured output."""
         context = self.base.get_context(turn)
         memories = context["relevant_memories"]
         if len(memories) < 3:
@@ -88,23 +195,37 @@ class LLMAgent:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=256,
-                system="You are a startup agent reflecting on recent events. Produce 1-3 concise insights as a JSON array of strings.",
-                messages=[{"role": "user", "content": f"Recent events:\n{memory_text}\n\nWhat are your key insights?"}],
+                system="You are a startup agent reflecting on recent events.",
+                messages=[{"role": "user", "content": f"Recent events:\n{memory_text}\n\nProvide 1-3 concise insights."}],
+                tools=[{
+                    "name": "submit_reflections",
+                    "description": "Submit your reflections as a list of insight strings",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "insights": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "1-3 concise insights",
+                            }
+                        },
+                        "required": ["insights"],
+                    },
+                }],
+                tool_choice={"type": "tool", "name": "submit_reflections"},
             )
-            raw = response.content[0].text.strip()
-            # Try to parse as JSON array
-            if raw.startswith("["):
-                insights = json.loads(raw)
-            else:
-                insights = [raw]
-            self.base.reflect(turn, insights)
+            for block in response.content:
+                if block.type == "tool_use" and block.name == "submit_reflections":
+                    result = ReflectionOutput.model_validate(block.input)
+                    self.base.reflect(turn, result.insights)
+                    return
         except Exception as e:
             logger.debug(f"Reflection failed for {self.role}: {e}")
 
     def _build_user_message(self, obs: dict, turn: int) -> str:
         """Build the context message sent to the LLM."""
-        # Get memory context
         context = self.base.get_context(turn)
+        role_data = obs.get("role_data", {})
 
         parts = [
             f"=== Day {obs.get('day', '?')} | Phase: {obs.get('phase', '?')} | Turn {turn} ===",
@@ -116,15 +237,51 @@ class LLMAgent:
             "",
         ]
 
-        # Messages from other agents
-        messages = obs.get("messages", [])
-        if messages:
-            parts.append("## Messages from teammates")
-            for m in messages:
-                parts.append(f"  {m.get('from', '?')}: {m.get('content', '')}")
+        # Role-specific urgency hints
+        if self.role == "dev":
+            in_progress = role_data.get("features_in_progress", [])
+            ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
+            if ready:
+                parts.append(f"!! URGENT: {len(ready)} feature(s) ready to ship! Use SHIP_RELEASE now!")
+                parts.append("")
+            elif in_progress:
+                building = in_progress[0]
+                parts.append(f">> Currently building: {building['name']} ({building['turns_remaining']} turns left)")
+                parts.append("")
+        elif self.role == "sales":
+            pipeline = role_data.get("pipeline", [])
+            if pipeline:
+                parts.append(">> PIPELINE STATUS:")
+                for c in pipeline:
+                    parts.append(f"   {c['name']}: stage={c['stage']}, budget=${c.get('budget', 0):,.0f}, days_since_contact={c.get('days_since_contact', 0)}")
+                parts.append("")
+            else:
+                parts.append(">> Pipeline is empty. Use COLLECT_FEEDBACK while waiting for leads.")
+                parts.append("")
+        elif self.role == "content":
+            team_status = role_data.get("team_status", {})
+            shipped = team_status.get("dev", {}).get("shipped", [])
+            if shipped:
+                parts.append(f">> SHIPPED FEATURES (safe for case studies): {', '.join(shipped)}")
+            else:
+                parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
 
-        # Events
+        # Shared memory board — the team's collective knowledge
+        shared_mem = role_data.pop("shared_memory", [])
+        if shared_mem:
+            parts.append("## SHARED TEAM MEMORY (all agents see this)")
+            for entry in shared_mem[-10:]:
+                parts.append(f"  [{entry.get('author', '?')}] ({entry.get('type', '?')}) {entry.get('content', '')}")
+            parts.append("")
+
+        messages = obs.get("messages", [])
+        if messages:
+            parts.append("## Team channel (recent messages)")
+            for m in messages:
+                parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
+            parts.append("")
+
         events = obs.get("events", [])
         if events:
             parts.append("## Active Events")
@@ -132,7 +289,6 @@ class LLMAgent:
                 parts.append(f"  - {e.get('name', '?')}: {e.get('description', '')}")
             parts.append("")
 
-        # Recent actions by all agents
         recent = obs.get("recent_actions", [])
         if recent:
             parts.append("## Recent team actions")
@@ -140,14 +296,11 @@ class LLMAgent:
                 parts.append(f"  [{a.get('agent_id')}] {a.get('action_type')} -> {a.get('detail', '')}")
             parts.append("")
 
-        # Role-specific data
-        role_data = obs.get("role_data", {})
         if role_data:
             parts.append("## Your role data")
             parts.append(json.dumps(role_data, indent=2, default=str))
             parts.append("")
 
-        # Memory context
         if context.get("current_plan"):
             parts.append(f"## Your current plan: {context['current_plan']}")
         reflections = context.get("recent_reflections", [])
@@ -157,56 +310,59 @@ class LLMAgent:
                 parts.append(f"  - {r}")
             parts.append("")
 
-        # Available actions reminder
         available = role_data.get("available_actions", [])
         if available:
-            parts.append(f"## Available actions: {', '.join(available)}")
+            parts.append(f"## ALLOWED ACTIONS: {', '.join(available)}")
             parts.append("")
 
-        parts.append("Respond with a single JSON action object. No markdown fences.")
+        parts.append("Pick the HIGHEST IMPACT action. Use the submit_action tool to respond.")
         return "\n".join(parts)
 
-    def _parse_action(self, raw: str) -> dict:
-        """Parse LLM response into an action dict."""
-        # Strip markdown fences if present
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            text = "\n".join(lines)
-
-        try:
-            action = json.loads(text)
-        except json.JSONDecodeError:
-            # Try to extract JSON from the text
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start >= 0 and end > start:
-                action = json.loads(text[start:end])
-            else:
-                raise ValueError(f"Could not parse action from: {text[:200]}")
-
-        # Validate required fields
-        if "action_type" not in action:
-            raise ValueError("Missing action_type in response")
-
-        return {
-            "action_type": action["action_type"],
-            "target": action.get("target", ""),
-            "parameters": action.get("parameters", {}),
-            "reasoning": action.get("reasoning", ""),
-            "message": action.get("message"),
-        }
-
     def _fallback_action(self, obs: dict) -> dict:
-        """Return a safe fallback action if LLM fails."""
-        fallbacks = {
-            "dev": {"action_type": "REFACTOR", "target": "", "parameters": {}, "reasoning": "LLM unavailable, refactoring", "message": None},
-            "marketing": {"action_type": "OPTIMIZE_FUNNEL", "target": "", "parameters": {}, "reasoning": "LLM unavailable, optimizing", "message": None},
-            "sales": {"action_type": "FOLLOW_UP", "target": "", "parameters": {}, "reasoning": "LLM unavailable, following up", "message": None},
-            "content": {"action_type": "WRITE_BLOG", "target": "Startup Tips", "parameters": {"topic": "general"}, "reasoning": "LLM unavailable, writing generic content", "message": None},
-        }
-        return fallbacks.get(self.role, fallbacks["dev"])
+        """Return a smart fallback action based on current state."""
+        role_data = obs.get("role_data", {})
+
+        if self.role == "dev":
+            # If features ready to ship, ship them
+            in_progress = role_data.get("features_in_progress", [])
+            ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
+            if ready:
+                return {"action_type": "SHIP_RELEASE", "target": "", "parameters": {}, "reasoning": "Features ready to ship", "message": None}
+            # If building something, continue
+            if in_progress:
+                return {"action_type": "BUILD_FEATURE", "target": in_progress[0]["name"], "parameters": {}, "reasoning": "Continue building feature", "message": None}
+            # Otherwise build from backlog
+            backlog = role_data.get("backlog", [])
+            target = backlog[0]["name"] if backlog else "SSO Integration"
+            return {"action_type": "BUILD_FEATURE", "target": target, "parameters": {}, "reasoning": "Building from backlog", "message": None}
+
+        elif self.role == "sales":
+            # Advance the most advanced customer in pipeline
+            pipeline = role_data.get("pipeline", [])
+            stage_priority = {"negotiation": 0, "proposal": 1, "demo": 2, "qualified": 3, "lead": 4, "visitor": 5}
+            pipeline_sorted = sorted(pipeline, key=lambda c: stage_priority.get(c.get("stage", "visitor"), 99))
+            if pipeline_sorted:
+                c = pipeline_sorted[0]
+                stage_actions = {
+                    "lead": "QUALIFY_LEAD",
+                    "qualified": "RUN_DEMO",
+                    "demo": "SEND_PROPOSAL",
+                    "proposal": "CLOSE_DEAL",
+                    "negotiation": "CLOSE_DEAL",
+                }
+                action = stage_actions.get(c["stage"], "FOLLOW_UP")
+                params = {"contract_tier": "monthly"} if action == "CLOSE_DEAL" else {}
+                return {"action_type": action, "target": c["name"], "parameters": params, "reasoning": f"Advancing {c['name']} from {c['stage']}", "message": None}
+            return {"action_type": "COLLECT_FEEDBACK", "target": "general", "parameters": {"feedback": "market feedback"}, "reasoning": "No customers in pipeline", "message": None}
+
+        elif self.role == "marketing":
+            budget = obs.get("budget_remaining", 0)
+            if budget >= 500:
+                return {"action_type": "LAUNCH_CAMPAIGN", "target": "Growth Campaign", "parameters": {}, "reasoning": "Driving traffic for leads", "message": None}
+            return {"action_type": "OPTIMIZE_FUNNEL", "target": "", "parameters": {}, "reasoning": "Free conversion optimization", "message": None}
+
+        else:  # content
+            return {"action_type": "WRITE_BLOG", "target": "SaaS Growth Strategies", "parameters": {"topic": "growth"}, "reasoning": "Generating traffic and leads", "message": None}
 
     def _summarize_observation(self, obs: dict) -> str:
         """Create a brief text summary of an observation for memory."""

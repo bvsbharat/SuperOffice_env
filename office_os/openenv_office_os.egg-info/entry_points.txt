@@ -1,0 +1,2 @@
+[console_scripts]
+server = office_os.server.app:main
