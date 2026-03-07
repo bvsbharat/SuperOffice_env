@@ -4,7 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""MarketVille Environment Client."""
+"""Office OS Environment Client."""
 
 from typing import Dict
 
@@ -19,7 +19,7 @@ class OfficeOsEnv(
     EnvClient[OfficeOsAction, OfficeOsObservation]
 ):
     """
-    Client for the MarketVille Environment.
+    Client for the Office OS Environment.
 
     Maintains a persistent WebSocket connection to the environment server.
     Each client instance has its own dedicated simulation session.

@@ -26,7 +26,7 @@ Anyone with the spreadsheet link can watch the startup operate in real-time.
 ### 2. Create a Google Spreadsheet
 
 - Go to https://sheets.google.com and create a new spreadsheet
-- Name it "MarketVille Dashboard" (or anything you like)
+- Name it "Office OS Dashboard" (or anything you like)
 - Share it with the service account email (found in the JSON key, looks like `xxx@xxx.iam.gserviceaccount.com`)
 - Give it **Editor** access
 - Copy the spreadsheet ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID/edit`

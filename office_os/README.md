@@ -11,7 +11,7 @@ tags:
   - openenv
 ---
 
-# MarketVille — Multi-Agent Startup Simulation
+# Office OS — Multi-Agent Startup Simulation
 
 A Smallville-style multi-agent simulation where 4 AI agents (Dev, Marketing, Sales, Content Creator) autonomously collaborate to grow a SaaS startup over 90 simulated days. Built on Meta's [OpenEnv](https://github.com/meta-pytorch/openenv) framework.
 
@@ -52,7 +52,7 @@ Enable Google Sheets sync to watch the simulation live in a spreadsheet — see 
 
 ## Quick Start (Client API)
 
-Connect to a running MarketVille server:
+Connect to a running Office OS server:
 
 ```python
 from office_os import OfficeOsAction, OfficeOsEnv
@@ -69,187 +69,57 @@ with OfficeOsEnv(base_url="http://localhost:8000") as env:
     print(f"Result: {result.observation.last_action_result['detail']}")
 ```
 
-## Building the Docker Image
-
-Before using the environment, you need to build the Docker image:
+## Building & Running the Server
 
 ```bash
-# From project root
+# Docker
 docker build -t office_os-env:latest -f server/Dockerfile .
+
+# Or run locally
+uvicorn server.app:app --reload
 ```
 
 ## Deploying to Hugging Face Spaces
 
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
-
 ```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
-
-# Or specify options
-openenv push --namespace my-org --private
+openenv push                          # Push to your namespace
+openenv push --repo-id my-org/my-env  # Push to specific repo
+openenv push --private                # Deploy as private
 ```
-
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
-
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
-
-```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
-```
-
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
 
 ## Environment Details
 
-### Action
-**OfficeOsAction**: Contains a single field
-- `message` (str) - The message to echo back
+### Action (OfficeOsAction)
+- `agent_id` — which agent: dev, marketing, sales, content
+- `action_type` — e.g. BUILD_FEATURE, LAUNCH_CAMPAIGN, CLOSE_DEAL, WRITE_BLOG
+- `target` — what the action applies to (feature name, customer name, etc.)
+- `parameters` — action-specific params (e.g. `{"contract_tier": "annual"}`)
+- `reasoning` — agent's reasoning for the action
+- `message` — optional message to another agent (`"dev: please build SSO"`)
 
-### Observation
-**OfficeOsObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
+### Observation (OfficeOsObservation)
+- `day`, `phase` — simulation time (1-90 days, 4 phases per day)
+- `kpis` — role-scoped KPI metrics (Marketing sees all, others see role-relevant subset)
+- `budget_remaining` — company budget
+- `role_data` — role-specific data (pipeline, backlog, content pieces, etc.)
+- `messages` — messages from other agents
+- `events` — active market events (competitor launch, PR crisis, etc.)
+- `last_action_result` — result of the previous action
+- `reward` — per-agent reward based on pipeline transitions, KPI deltas, collaboration
 
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Office Os environment server running, you can connect directly:
-
-```python
-from office_os import OfficeOsEnv
-
-# Connect to existing server
-office_osenv = OfficeOsEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = office_osenv.reset()
-result = office_osenv.step(OfficeOsAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `office_osenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from office_os import OfficeOsAction, OfficeOsEnv
-
-# Connect with context manager (auto-connects and closes)
-with OfficeOsEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(OfficeOsAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    OfficeOsEnvironment,  # Pass class, not instance
-    OfficeOsAction,
-    OfficeOsObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from office_os import OfficeOsAction, OfficeOsEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with OfficeOsEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(OfficeOsAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
+### Reward System
+- **Pipeline rewards**: Agents earn rewards when customers advance stages (e.g. Sales +10 for closed_won)
+- **Contract tiers**: Monthly (1x), 6-month (2x), Annual (3x) reward multiplier
+- **Collaboration bonuses**: Content writing about shipped features, Sales using content in demos
+- **Penalties**: Vaporware (-5), stale leads (-0.5 each), budget overrun warnings
 
 ## Development & Testing
 
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
-
 ```bash
-# From the server directory
-python3 server/office_os_environment.py
-```
+# Run tests (12 tests)
+python tests/test_env.py
 
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running Locally
-
-Run the server locally for development:
-
-```bash
+# Run server locally
 uvicorn server.app:app --reload
 ```
 
@@ -257,17 +127,28 @@ uvicorn server.app:app --reload
 
 ```
 office_os/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # OfficeOsEnv client
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── office_os_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
+├── __init__.py              # Module exports
+├── models.py                # Action & Observation Pydantic models
+├── client.py                # OfficeOsEnv WebSocket client
+├── run_agents.py            # Main LLM agent orchestration script
+├── server/
+│   ├── app.py               # FastAPI server (HTTP + WebSocket)
+│   ├── office_os_environment.py  # Core environment (reset/step)
+│   └── Dockerfile
+├── market/
+│   ├── config.py            # Constants, pipeline stages, contract tiers
+│   ├── state.py             # MarketState, Customer, Feature, Campaign
+│   ├── simulator.py         # Action execution engine
+│   ├── events.py            # Random market events
+│   └── metrics.py           # Reward calculation
+├── agents/
+│   ├── base_agent.py        # Smallville-style agent with memory
+│   ├── memory.py            # Memory streams (observations/reflections/plans)
+│   ├── llm_agent.py         # Claude-powered decision making
+│   └── prompts.py           # Role-specific system prompts
+├── integrations/
+│   ├── sheets.py            # Google Sheets live sync
+│   └── SHEETS_SETUP.md      # Setup guide
+└── tests/
+    └── test_env.py          # 12 tests
 ```
