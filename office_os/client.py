@@ -4,7 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Office Os Environment Client."""
+"""MarketVille Environment Client."""
 
 from typing import Dict
 
@@ -19,59 +19,51 @@ class OfficeOsEnv(
     EnvClient[OfficeOsAction, OfficeOsObservation]
 ):
     """
-    Client for the Office Os Environment.
+    Client for the MarketVille Environment.
 
-    This client maintains a persistent WebSocket connection to the environment server,
-    enabling efficient multi-step interactions with lower latency.
-    Each client instance has its own dedicated environment session on the server.
+    Maintains a persistent WebSocket connection to the environment server.
+    Each client instance has its own dedicated simulation session.
 
     Example:
-        >>> # Connect to a running server
         >>> with OfficeOsEnv(base_url="http://localhost:8000") as client:
         ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+        ...     print(result.observation.kpis)
         ...
-        ...     result = client.step(OfficeOsAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
-
-    Example with Docker:
-        >>> # Automatically start container and connect
-        >>> client = OfficeOsEnv.from_docker_image("office_os-env:latest")
-        >>> try:
-        ...     result = client.reset()
-        ...     result = client.step(OfficeOsAction(message="Test"))
-        ... finally:
-        ...     client.close()
+        ...     result = client.step(OfficeOsAction(
+        ...         agent_id="dev",
+        ...         action_type="BUILD_FEATURE",
+        ...         target="SSO Integration",
+        ...     ))
+        ...     print(result.observation.last_action_result)
     """
 
     def _step_payload(self, action: OfficeOsAction) -> Dict:
-        """
-        Convert OfficeOsAction to JSON payload for step message.
-
-        Args:
-            action: OfficeOsAction instance
-
-        Returns:
-            Dictionary representation suitable for JSON encoding
-        """
-        return {
-            "message": action.message,
+        """Convert action to JSON payload."""
+        payload = {
+            "agent_id": action.agent_id,
+            "action_type": action.action_type,
+            "target": action.target,
+            "parameters": action.parameters,
+            "reasoning": action.reasoning,
         }
+        if action.message:
+            payload["message"] = action.message
+        return payload
 
     def _parse_result(self, payload: Dict) -> StepResult[OfficeOsObservation]:
-        """
-        Parse server response into StepResult[OfficeOsObservation].
-
-        Args:
-            payload: JSON response data from server
-
-        Returns:
-            StepResult with OfficeOsObservation
-        """
+        """Parse server response into StepResult."""
         obs_data = payload.get("observation", {})
         observation = OfficeOsObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            agent_id=obs_data.get("agent_id", ""),
+            day=obs_data.get("day", 1),
+            phase=obs_data.get("phase", ""),
+            kpis=obs_data.get("kpis", {}),
+            budget_remaining=obs_data.get("budget_remaining", 0.0),
+            recent_actions=obs_data.get("recent_actions", []),
+            messages=obs_data.get("messages", []),
+            events=obs_data.get("events", []),
+            role_data=obs_data.get("role_data", {}),
+            last_action_result=obs_data.get("last_action_result", {}),
             done=payload.get("done", False),
             reward=payload.get("reward"),
             metadata=obs_data.get("metadata", {}),
@@ -84,15 +76,7 @@ class OfficeOsEnv(
         )
 
     def _parse_state(self, payload: Dict) -> State:
-        """
-        Parse server response into State object.
-
-        Args:
-            payload: JSON response from state request
-
-        Returns:
-            State object with episode_id and step_count
-        """
+        """Parse server response into State object."""
         return State(
             episode_id=payload.get("episode_id"),
             step_count=payload.get("step_count", 0),
