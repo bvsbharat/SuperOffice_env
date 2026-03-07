@@ -21,8 +21,10 @@ Setup:
 
 from __future__ import annotations
 
+import json
 import os
 import logging
+import tempfile
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -66,7 +68,8 @@ class GoogleSheetsSync:
         credentials_path: str | None = None,
     ):
         self._spreadsheet_id = spreadsheet_id or os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID", "")
-        self._credentials_path = credentials_path or os.environ.get("GOOGLE_SHEETS_CREDENTIALS", "")
+        raw_creds = credentials_path or os.environ.get("GOOGLE_SHEETS_CREDENTIALS", "")
+        self._credentials_path = os.path.expanduser(raw_creds) if raw_creds else ""
         self._client = None
         self._spreadsheet = None
         self._enabled = bool(self._spreadsheet_id)
@@ -87,10 +90,18 @@ class GoogleSheetsSync:
         try:
             gspread = _load_gspread()
 
-            if self._credentials_path:
-                self._client = gspread.service_account(filename=self._credentials_path)
+            creds_value = self._credentials_path
+            if creds_value and not os.path.isfile(creds_value):
+                # Treat as inline JSON (e.g. from HF Secrets)
+                creds_dict = json.loads(creds_value)
+                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+                json.dump(creds_dict, tmp)
+                tmp.close()
+                self._client = gspread.service_account(filename=tmp.name)
+                os.unlink(tmp.name)
+            elif creds_value:
+                self._client = gspread.service_account(filename=creds_value)
             else:
-                # Try default credentials
                 self._client = gspread.service_account()
 
             self._spreadsheet = self._client.open_by_key(self._spreadsheet_id)

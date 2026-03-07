@@ -12,7 +12,13 @@ A Smallville-style multi-agent startup simulation where 4 agents
 over 90 simulated days.
 """
 
+from pathlib import Path
 from uuid import uuid4
+
+from dotenv import load_dotenv
+
+# Load .env from project root (2 levels up from server/)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State

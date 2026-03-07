@@ -21,6 +21,7 @@ dependencies = [
     # LLM agent intelligence (Claude API)
     "anthropic>=0.40.0",
     "boto3>=1.42.63",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
