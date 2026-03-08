@@ -97,6 +97,12 @@ class ARTTrainer:
         if self._initialized or not self.enabled:
             return
 
+        # Remote backend: no ART dependency needed, just HTTP to Northflank
+        if self.backend_type == "remote":
+            logger.info(f"Using remote training endpoint: {self.northflank_endpoint}")
+            self._initialized = True
+            return
+
         try:
             import art
         except ImportError:
@@ -114,11 +120,6 @@ class ARTTrainer:
                 from art.serverless.backend import ServerlessBackend
                 self._backend = ServerlessBackend()
                 logger.info("Using ART ServerlessBackend (W&B managed GPUs)")
-            elif self.backend_type == "remote":
-                # Remote: connect to a Northflank-hosted training API
-                logger.info(f"Using remote training endpoint: {self.northflank_endpoint}")
-                self._initialized = True
-                return
             else:
                 logger.info("ART training disabled")
                 return
