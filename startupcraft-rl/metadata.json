@@ -1,0 +1,5 @@
+{
+  "name": "StartupCraft RL",
+  "description": "A Minecraft-styled reinforcement learning simulation for startup go-to-market strategies.",
+  "requestFramePermissions": []
+}
