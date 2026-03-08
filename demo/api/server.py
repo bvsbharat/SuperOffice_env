@@ -32,6 +32,9 @@ bridge_config: dict = {
     "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-3B-Instruct"),
     "art_api_key": os.environ.get("ART_API_KEY", ""),
     "aws_region": os.environ.get("AWS_REGION", "us-east-1"),
+    "mode": os.environ.get("SIM_MODE", "llm"),
+    "northflank_endpoint": os.environ.get("NORTHFLANK_ENDPOINT", ""),
+    "train_every": int(os.environ.get("TRAIN_EVERY", "999")),
 }
 
 from routes import router
@@ -85,6 +88,12 @@ def main():
                         help="API key for ART endpoint")
     parser.add_argument("--aws-region", type=str, default="us-east-1",
                         help="AWS region for Bedrock")
+    parser.add_argument("--mode", choices=["llm", "training", "inference"], default="llm",
+                        help="Simulation mode: llm (default), training (collect trajectories), inference (use trained LoRA)")
+    parser.add_argument("--northflank-endpoint", type=str, default="",
+                        help="Northflank vLLM endpoint for training/inference")
+    parser.add_argument("--train-every", type=int, default=999,
+                        help="Train every N simulation days (default: 999 = end of episode only)")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
@@ -98,10 +107,13 @@ def main():
         "art_model": args.art_model,
         "art_api_key": args.art_api_key or os.environ.get("ART_API_KEY", ""),
         "aws_region": args.aws_region,
+        "mode": args.mode,
+        "northflank_endpoint": args.northflank_endpoint or os.environ.get("NORTHFLANK_ENDPOINT", ""),
+        "train_every": args.train_every,
     })
 
     import uvicorn
-    print(f"Starting server: provider={args.provider}, model={args.model}, days={args.days}")
+    print(f"Starting server: provider={args.provider}, model={args.model}, days={args.days}, mode={args.mode}")
     if args.provider == "art":
         print(f"  ART endpoint: {bridge_config['art_endpoint']}")
         print(f"  ART model: {bridge_config['art_model']}")

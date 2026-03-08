@@ -157,6 +157,7 @@ export const agentIconPath = (id: AgentId) => `/agents/${id}.png`
 
 export type Theme = 'light' | 'dark'
 export type ViewMode = 'playground' | '4d' | 'tabular'
+export type SimMode = 'llm' | 'training' | 'inference'
 
 export interface StateSnapshot {
   step: number

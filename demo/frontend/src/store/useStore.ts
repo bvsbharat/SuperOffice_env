@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   AgentId, GTMAgent, KPISnapshot, Message, SimEvent,
   Phase, Speed, GTMState, StepResult,
-  ViewMode, PanelVisibility, Theme, StateSnapshot,
+  ViewMode, PanelVisibility, Theme, StateSnapshot, SimMode,
   PipelineCustomer, FeatureStatus, ContentPiece, SharedMemoryEntry,
 } from '../types'
 import { AGENT_ORDER, ROOM_3D_POSITIONS } from '../types'
@@ -95,6 +95,10 @@ interface GTMStore {
   currentModel: string
   currentProvider: string
 
+  // Simulation mode
+  simMode: SimMode
+  trainingStatus: { collecting: boolean; totalTrajectories: number; pendingTrajectories: number } | null
+
   // UI state
   speechBubbles: SpeechBubble[]
   coordArrows: CoordArrow[]
@@ -131,6 +135,7 @@ interface GTMStore {
   addBenchmarkRun: (run: BenchmarkRun) => void
   toggleBenchmarkPanel: () => void
   setCurrentModel: (model: string, provider: string) => void
+  setSimMode: (mode: SimMode) => void
 }
 
 const DEFAULT_AGENT = (id: AgentId): GTMAgent => ({
@@ -203,6 +208,9 @@ export const useStore = create<GTMStore>((set, get) => ({
   timelineStep: null,
   isTimelinePlaying: false,
   timelineSpeed: 1,
+
+  simMode: 'llm',
+  trainingStatus: null,
 
   lastProcessedStep: -1,
   speechBubbles: [],
@@ -281,6 +289,9 @@ export const useStore = create<GTMStore>((set, get) => ({
       if (typeof window !== 'undefined') localStorage.setItem('benchmarkRuns', JSON.stringify(newBenchmarkRuns))
     }
 
+    // Extract training status if present
+    const trainingStatus = (result as any).training_status ?? state.trainingStatus
+
     return {
       episode: fullState.episode,
       step: fullState.step,
@@ -306,6 +317,7 @@ export const useStore = create<GTMStore>((set, get) => ({
       coordArrows: newArrows,
       stateHistory: [...state.stateHistory, snapshot],
       benchmarkRuns: newBenchmarkRuns,
+      trainingStatus,
     }
   }),
 
@@ -407,4 +419,15 @@ export const useStore = create<GTMStore>((set, get) => ({
   toggleBenchmarkPanel: () => set(s => ({ benchmarkPanelOpen: !s.benchmarkPanelOpen })),
 
   setCurrentModel: (model, provider) => set({ currentModel: model, currentProvider: provider }),
+
+  setSimMode: (mode) => {
+    const state = get()
+    set({ simMode: mode, trainingStatus: mode === 'llm' ? null : state.trainingStatus })
+    // Fire-and-forget reconfigure
+    fetch('/api/reconfigure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: state.currentModel, provider: state.currentProvider, mode }),
+    }).catch(() => {})
+  },
 }))

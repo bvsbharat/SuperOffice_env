@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
@@ -25,7 +25,7 @@ router = APIRouter()
 _bridge: OfficeOsBridge | None = None
 _ws_connections: list[WebSocket] = []
 # Track the currently configured model/provider so /api/config is always accurate
-_active_config: dict = {"model": "unknown", "provider": "bedrock"}
+_active_config: dict = {"model": "unknown", "provider": "bedrock", "mode": "llm"}
 
 
 def _get_bridge() -> OfficeOsBridge:
@@ -55,8 +55,15 @@ def _get_bridge() -> OfficeOsBridge:
             art_model=bridge_config["art_model"],
             art_api_key=bridge_config["art_api_key"],
             aws_region=bridge_config["aws_region"],
+            mode=bridge_config.get("mode", "llm"),
+            northflank_endpoint=bridge_config.get("northflank_endpoint", ""),
+            train_every=bridge_config.get("train_every", 999),
         )
-        _active_config = {"model": bridge_config["model"], "provider": bridge_config["provider"]}
+        _active_config = {
+            "model": bridge_config["model"],
+            "provider": bridge_config["provider"],
+            "mode": bridge_config.get("mode", "llm"),
+        }
     return _bridge
 
 
@@ -106,13 +113,18 @@ async def get_config():
         _main = _sys.modules.get("__main__")
         bc = getattr(_main, "bridge_config", None)
         if bc:
-            return {"provider": bc.get("provider", "bedrock"), "model": bc.get("model", "unknown")}
+            return {
+                "provider": bc.get("provider", "bedrock"),
+                "model": bc.get("model", "unknown"),
+                "mode": bc.get("mode", "llm"),
+            }
     return _active_config
 
 
 class ReconfigureRequest(BaseModel):
     model: str
     provider: str = "bedrock"
+    mode: Optional[str] = None
 
 
 @router.post("/api/reconfigure")
@@ -124,11 +136,23 @@ async def reconfigure(req: ReconfigureRequest):
     if bc is not None:
         bc["model"] = req.model
         bc["provider"] = req.provider
-    # Track new model immediately so /api/config reflects it without needing a reset
-    _active_config = {"model": req.model, "provider": req.provider}
-    # Destroy current bridge so next reset picks up new model
+        if req.mode is not None:
+            bc["mode"] = req.mode
+    # Track new config immediately so /api/config reflects it without needing a reset
+    new_mode = req.mode or _active_config.get("mode", "llm")
+    _active_config = {"model": req.model, "provider": req.provider, "mode": new_mode}
+    # Destroy current bridge so next reset picks up new config
     _bridge = None
-    return {"provider": req.provider, "model": req.model, "status": "reconfigured"}
+    return {"provider": req.provider, "model": req.model, "mode": new_mode, "status": "reconfigured"}
+
+
+@router.get("/api/training-status")
+async def training_status():
+    bridge = _get_bridge()
+    status = bridge._get_training_status()
+    if status is None:
+        return {"active": False}
+    return {"active": True, **status}
 
 
 _RUBRIC_TEXT = """

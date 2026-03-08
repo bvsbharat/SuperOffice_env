@@ -142,6 +142,9 @@ class OfficeOsBridge:
         art_model: str = "Qwen/Qwen2.5-3B-Instruct",
         art_api_key: str = "",
         aws_region: str = "us-east-1",
+        mode: str = "llm",
+        northflank_endpoint: str = "",
+        train_every: int = 999,
     ):
         self.provider = provider
         self.model = model
@@ -150,6 +153,11 @@ class OfficeOsBridge:
         self.art_model = art_model
         self.art_api_key = art_api_key
         self.aws_region = aws_region
+        self._mode = mode
+        self._northflank_endpoint = northflank_endpoint
+        self._train_every = train_every
+        self._collector = None   # Optional TrajectoryCollector
+        self._trainer = None     # Optional RemoteTrainer
 
         self._env: Optional[OfficeOsEnvironment] = None
         self._agents: dict[str, LLMAgent] = {}
@@ -188,12 +196,40 @@ class OfficeOsBridge:
         if self.provider == "art" and self.art_endpoint:
             vllm_base_url = self.art_endpoint.rstrip("/") + "/v1"
             for role, agent in self._agents.items():
-                agent.set_art_endpoint(
+                agent.set_vllm_endpoint(
                     base_url=vllm_base_url,
                     api_key=self.art_api_key or "dummy",
                     model_name=self.art_model,
                 )
             logger.info(f"ART mode: all agents using {vllm_base_url} with model {self.art_model}")
+
+        # Training mode: initialize trajectory collector + remote trainer
+        if self._mode == "training":
+            try:
+                from training.collector import TrajectoryCollector
+                from training.trainer import RemoteTrainer
+                self._collector = TrajectoryCollector()
+                self._trainer = RemoteTrainer(
+                    collector=self._collector,
+                    train_every_days=self._train_every,
+                    northflank_endpoint=self._northflank_endpoint,
+                )
+                logger.info("Training mode: trajectory collector + remote trainer initialized")
+            except ImportError as e:
+                logger.warning(f"Training mode: could not import training modules: {e}")
+                self._collector = None
+                self._trainer = None
+
+        # Inference mode: use trained LoRA models via vLLM
+        if self._mode == "inference" and self._northflank_endpoint:
+            vllm_base_url = self._northflank_endpoint.rstrip("/") + "/v1"
+            for role, agent in self._agents.items():
+                agent.set_vllm_endpoint(
+                    base_url=vllm_base_url,
+                    api_key="dummy",
+                    model_name=f"office-os-{role}",
+                )
+            logger.info(f"Inference mode: all agents using trained LoRA at {vllm_base_url}")
 
     def reset(self) -> dict:
         """Reset the environment and return full state dict."""
@@ -354,12 +390,30 @@ class OfficeOsBridge:
                     })
                     break
 
+        # Record trajectory for training mode
+        if self._collector is not None:
+            self._collector.record(
+                role=role,
+                system_prompt=getattr(agent, 'system_prompt', ''),
+                user_message=getattr(agent, 'last_user_message', ''),
+                assistant_response=action_dict,
+                reward=reward,
+                day=self._obs.day,
+                turn=self._turn,
+            )
+
         # Record KPI snapshot
         kpis = self._get_kpis()
         self._kpi_history.append({**kpis, "step": self._turn})
 
         # Check done
         self._done = self._obs.day > self.max_days or self._obs.done
+
+        # End-of-episode: save trajectories and optionally trigger training
+        if self._done and self._collector is not None:
+            import os as _os
+            data_dir = _os.path.join(_os.path.dirname(__file__), "..", "..", "office_os", "training_data")
+            self._collector.save_jsonl(_os.path.join(data_dir, f"trajectories_ep{self._episode}.jsonl"))
 
         # Build step result
         step_result = {
@@ -378,6 +432,7 @@ class OfficeOsBridge:
             "events": self._obs.events,
             "actionResult": result,
             "collaborations": collaborations,  # NEW: collaboration events
+            "training_status": self._get_training_status(),
             "state": self.get_state(),
         }
 
@@ -484,6 +539,7 @@ class OfficeOsBridge:
             "shared_memory": shared_memory,
             "active_agent": active_agent,
             "max_days": self.max_days,
+            "mode": self._mode,
         }
 
     def get_kpi_history(self) -> list[dict]:
@@ -549,4 +605,15 @@ class OfficeOsBridge:
             "shared_memory": [],
             "active_agent": None,
             "max_days": self.max_days,
+            "mode": self._mode,
+        }
+
+    def _get_training_status(self) -> Optional[dict]:
+        """Return training status if in training mode, else None."""
+        if self._collector is None:
+            return None
+        return {
+            "collecting": True,
+            "totalTrajectories": self._collector.total_count(),
+            "pendingTrajectories": self._collector.pending_count(),
         }

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Play, Pause, SkipForward, RotateCcw } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { ModelSelector } from './ModelSelector'
+import { ModeSelector } from './ModeSelector'
 import type { Speed } from '../types'
 
 const SPEED_INTERVALS: Record<Speed, number> = { 1: 3000, 2: 1500, 5: 600 }
@@ -89,6 +90,11 @@ export function EpisodeControls() {
     <div className="flex items-center gap-3 px-3 h-full">
       {/* Model Selector */}
       <ModelSelector />
+
+      <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
+
+      {/* Mode Selector */}
+      <ModeSelector />
 
       <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
 
