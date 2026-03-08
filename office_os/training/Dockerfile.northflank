@@ -1,0 +1,27 @@
+FROM pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl && rm -rf /var/lib/apt/lists/*
+
+# Python deps
+RUN pip install --no-cache-dir \
+    "openpipe-art[backend]" \
+    vllm \
+    fastapi \
+    uvicorn \
+    httpx \
+    gspread
+
+# Copy the project
+COPY . /app/office_os/
+
+WORKDIR /app/office_os
+
+# Expose training server port
+EXPOSE 8080
+
+# Default: run the ART training server
+CMD ["python", "training/northflank_server.py", "--port", "8080", "--base-model", "Qwen/Qwen2.5-3B-Instruct"]

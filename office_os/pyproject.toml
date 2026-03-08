@@ -29,6 +29,19 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
 ]
+art = [
+    # ART training (run on Northflank H100 GPU)
+    "openpipe-art>=0.5.0",
+    "openai>=1.0.0",
+    "httpx>=0.27.0",
+]
+art-server = [
+    # Full ART backend + vLLM for Northflank deployment
+    "openpipe-art[backend]>=0.5.0",
+    "vllm",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+]
 
 [project.scripts]
 # Server entry point - enables running via: uv run --project . server
@@ -37,5 +50,5 @@ server = "office_os.server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["office_os", "office_os.server", "office_os.market", "office_os.agents", "office_os.integrations"]
-package-dir = { "office_os" = ".", "office_os.server" = "server", "office_os.market" = "market", "office_os.agents" = "agents", "office_os.integrations" = "integrations" }
+packages = ["office_os", "office_os.server", "office_os.market", "office_os.agents", "office_os.integrations", "office_os.training"]
+package-dir = { "office_os" = ".", "office_os.server" = "server", "office_os.market" = "market", "office_os.agents" = "agents", "office_os.integrations" = "integrations", "office_os.training" = "training" }
