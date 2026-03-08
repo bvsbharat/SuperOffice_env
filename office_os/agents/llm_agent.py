@@ -191,12 +191,21 @@ class LLMAgent:
                 f"{', '.join(unique_rejected)}. Do NOT use them."
             )
 
+        # Truncate user message to fit within context window
+        # 4096 tokens total - 512 output = 3584 input tokens
+        # System prompt + json_instruction ≈ ~1200 tokens (~4800 chars)
+        # Reserve ~2300 tokens (~9200 chars) for user message
+        system_content = self.system_prompt + json_instruction
+        max_user_chars = max(2000, (3584 * 4) - len(system_content))
+        if len(user_msg) > max_user_chars:
+            user_msg = user_msg[:max_user_chars] + "\n\n[... truncated for context length ...]"
+
         response = self.openai_client.chat.completions.create(
             model=self._vllm_endpoint["model_name"],
             max_tokens=512,
             temperature=0.7,
             messages=[
-                {"role": "system", "content": self.system_prompt + json_instruction},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": user_msg},
             ],
         )
@@ -361,14 +370,14 @@ class LLMAgent:
         shared_mem = role_data.pop("shared_memory", [])
         if shared_mem:
             parts.append("## SHARED TEAM MEMORY (all agents see this)")
-            for entry in shared_mem[-10:]:
+            for entry in shared_mem[-5:]:
                 parts.append(f"  [{entry.get('author', '?')}] ({entry.get('type', '?')}) {entry.get('content', '')}")
             parts.append("")
 
         messages = obs.get("messages", [])
         if messages:
             parts.append("## Team channel (recent messages)")
-            for m in messages:
+            for m in messages[-5:]:
                 parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
             parts.append("")
 
