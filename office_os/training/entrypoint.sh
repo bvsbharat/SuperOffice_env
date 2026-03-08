@@ -34,6 +34,9 @@ pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
 pkill -9 -f "train_worker.py" 2>/dev/null || true
 sleep 2
 
+# ── Set Python path so training worker can import market.config ────
+export PYTHONPATH="$REPO_DIR/office_os:$PYTHONPATH"
+
 # ── Start vLLM inference (background) ─────────────────────────────
 echo ">> Starting vLLM on port 8080..."
 VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_server \
