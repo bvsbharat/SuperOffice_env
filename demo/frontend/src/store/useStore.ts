@@ -213,7 +213,7 @@ export const useStore = create<GTMStore>((set, get) => ({
   lastError: null,
   theme: (typeof window !== 'undefined' && localStorage.getItem('theme') === 'dark') ? 'dark' : 'light',
   viewMode: 'tabular',
-  panelVisibility: { rightSidebar: false, bottomPanel: true },
+  panelVisibility: { rightSidebar: false, bottomPanel: false },
   benchmarkRuns: (typeof window !== 'undefined' && localStorage.getItem('benchmarkRuns'))
     ? JSON.parse(localStorage.getItem('benchmarkRuns')!)
     : [],
@@ -369,9 +369,7 @@ export const useStore = create<GTMStore>((set, get) => ({
 
   setViewMode: (mode) => set({
     viewMode: mode,
-    panelVisibility: (mode === 'playground' || mode === '4d')
-      ? { rightSidebar: false, bottomPanel: false }
-      : { rightSidebar: false, bottomPanel: true },
+    panelVisibility: { rightSidebar: false, bottomPanel: false },
   }),
 
   togglePanel: (panel) => set(s => ({

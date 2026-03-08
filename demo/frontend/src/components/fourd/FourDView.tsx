@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Office3D from './Office3D'
 import { TimelineScrubber } from './TimelineScrubber'
 import { EpisodeControls } from '../EpisodeControls'
 import { AgentCard } from '../AgentCard'
 import { MarketDashboard } from '../MarketDashboard'
+import { ConversationLog } from '../ConversationLog'
+import { RewardPanel } from '../RewardPanel'
 import { useEffectiveState } from '../../hooks/useEffectiveState'
 import { useStore } from '../../store/useStore'
 import { AGENT_ORDER, PHASE_COLORS } from '../../types'
@@ -98,8 +101,11 @@ function ConfettiOverlay({ active }: { active: boolean }) {
 export function FourDView() {
   const state = useEffectiveState()
   const done = useStore(s => s.done)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<'agents' | 'dashboard'>('agents')
+  const panelVisibility = useStore(s => s.panelVisibility)
+  const togglePanel = useStore(s => s.togglePanel)
+  const leftOpen = panelVisibility.bottomPanel
+  const rightOpen = panelVisibility.rightSidebar
+  const [rightTab, setRightTab] = useState<'agents' | 'dashboard' | 'rewards'>('agents')
   const [showConfetti, setShowConfetti] = useState(false)
   const prevDone = useRef(false)
 
@@ -129,7 +135,7 @@ export function FourDView() {
       {/* Confetti on episode completion */}
       <ConfettiOverlay active={showConfetti} />
 
-      {/* Main area: 3D canvas + optional sidebar */}
+      {/* Main area: 3D canvas + left/right sidebars */}
       <div className="flex-1 min-h-0 flex relative">
         {/* 3D Canvas */}
         <div className="flex-1 min-h-0 relative">
@@ -152,70 +158,117 @@ export function FourDView() {
               VIEWING STEP {state.step} (HISTORICAL)
             </div>
           )}
-
-          {/* Sidebar toggle */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="absolute top-2 right-2 z-20 text-[10px] font-bold px-2 py-1 rounded transition-colors"
-            style={{
-              background: 'var(--color-card-bg)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text-secondary)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            {sidebarOpen ? 'CLOSE' : 'PANEL'}
-          </button>
         </div>
 
-        {/* Side Panel */}
+        {/* ── Left sidebar toggle ── */}
+        <motion.button
+          onClick={() => togglePanel('bottomPanel')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="absolute top-2 z-30 flex items-center justify-center"
+          style={{
+            left: leftOpen ? 340 : 0,
+            width: 20,
+            height: 36,
+            background: 'var(--color-panel)',
+            border: '1px solid var(--color-border)',
+            borderLeft: leftOpen ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '0 4px 4px 0',
+            color: 'var(--color-text-faint)',
+            cursor: 'pointer',
+            transition: 'left 0.3s ease-in-out',
+          }}
+        >
+          {leftOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+        </motion.button>
+
+        {/* ── Left sidebar — Conversation Log ── */}
         <AnimatePresence initial={false}>
-          {sidebarOpen && (
+          {leftOpen && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 320, opacity: 1 }}
+              animate={{ width: 340, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: 'easeInOut' }}
-              className="shrink-0 flex flex-col overflow-hidden"
-              style={{
-                background: 'var(--color-surface)',
-                backdropFilter: 'blur(16px)',
-                borderLeft: '1px solid var(--color-border)',
-              }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="absolute left-0 top-0 bottom-0 z-20 flex flex-col overflow-hidden"
+              style={{ borderRight: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
             >
-              {/* Tabs */}
-              <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <button
-                  onClick={() => setSidebarTab('agents')}
-                  className="flex-1 text-[10px] px-3 py-2 font-semibold transition-colors"
-                  style={{
-                    color: sidebarTab === 'agents' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                    borderBottom: sidebarTab === 'agents' ? '2px solid #6366f1' : '2px solid transparent',
-                  }}
-                >
-                  AGENTS
-                </button>
-                <button
-                  onClick={() => setSidebarTab('dashboard')}
-                  className="flex-1 text-[10px] px-3 py-2 font-semibold transition-colors"
-                  style={{
-                    color: sidebarTab === 'dashboard' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                    borderBottom: sidebarTab === 'dashboard' ? '2px solid #6366f1' : '2px solid transparent',
-                  }}
-                >
-                  KPIs
-                </button>
+              <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
+                <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
               </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ConversationLog />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
+        {/* ── Right sidebar toggle ── */}
+        <motion.button
+          onClick={() => togglePanel('rightSidebar')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="absolute top-2 z-30 flex items-center justify-center"
+          style={{
+            right: rightOpen ? 384 : 0,
+            width: 20,
+            height: 36,
+            background: 'var(--color-panel)',
+            border: '1px solid var(--color-border)',
+            borderRight: rightOpen ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '4px 0 0 4px',
+            color: 'var(--color-text-faint)',
+            cursor: 'pointer',
+            transition: 'right 0.3s ease-in-out',
+          }}
+        >
+          {rightOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        </motion.button>
+
+        {/* ── Right sidebar — Agents / KPIs / Rewards ── */}
+        <AnimatePresence initial={false}>
+          {rightOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 384, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="absolute right-0 top-0 bottom-0 z-20 flex flex-col overflow-hidden"
+              style={{ borderLeft: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+            >
+              <div className="flex shrink-0 relative" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
+                {([['agents', 'AGENTS'], ['dashboard', 'KPIs'], ['rewards', 'REWARDS']] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    onClick={() => setRightTab(tab)}
+                    className="flex-1 text-[10px] px-3 py-2 font-semibold transition-colors relative"
+                    style={{
+                      color: rightTab === tab ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
+                    }}
+                  >
+                    {label}
+                    {rightTab === tab && (
+                      <motion.div
+                        layoutId="fourdRightTabIndicator"
+                        className="absolute bottom-0 left-0 right-0"
+                        style={{ height: 2, background: '#6366f1' }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
               <div className="flex-1 min-h-0 overflow-y-auto p-2">
-                {sidebarTab === 'agents' ? (
+                {rightTab === 'agents' ? (
                   <div className="grid grid-cols-1 gap-2">
                     {AGENT_ORDER.map(aid => (
                       <AgentCard key={aid} agent={state.agents[aid as AgentId]} compact />
                     ))}
                   </div>
-                ) : (
+                ) : rightTab === 'dashboard' ? (
                   <MarketDashboard />
+                ) : (
+                  <RewardPanel />
                 )}
               </div>
             </motion.div>
@@ -228,66 +281,65 @@ export function FourDView() {
         <TimelineScrubber />
       </div>
 
-      {/* Info Bar + Episode Controls — above sidebars */}
+      {/* Info Bar — above sidebars */}
       <div
-        className="shrink-0 flex items-center relative"
+        className="shrink-0 flex items-center gap-3 px-3 py-1.5 relative"
         style={{
           background: 'var(--color-panel)',
           borderTop: '1px solid var(--color-border)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
           zIndex: 30,
         }}
       >
-        {/* Info */}
-        <div className="flex-1 flex items-center gap-3 px-3 py-1.5 min-w-0">
-          {/* Phase badge */}
-          <span
-            className="text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0"
-            style={{ background: `${phaseColor}30`, color: phaseColor, border: `1px solid ${phaseColor}50` }}
-          >
-            {state.phase}
+        {/* Phase badge */}
+        <span
+          className="text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0"
+          style={{ background: `${phaseColor}30`, color: phaseColor, border: `1px solid ${phaseColor}50` }}
+        >
+          {state.phase}
+        </span>
+
+        {/* Active agent */}
+        {state.activeAgent && (
+          <span className="text-[10px] font-semibold shrink-0" style={{ color: 'var(--color-text-primary)' }}>
+            {state.agents[state.activeAgent]?.emoji} {state.agents[state.activeAgent]?.name}
           </span>
+        )}
 
-          {/* Active agent */}
-          {state.activeAgent && (
-            <span className="text-[10px] font-semibold shrink-0" style={{ color: 'var(--color-text-primary)' }}>
-              {state.agents[state.activeAgent]?.emoji} {state.agents[state.activeAgent]?.name}
-            </span>
-          )}
+        {/* Action */}
+        {state.action && (
+          <span className="text-[10px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
+            {state.action}{state.target ? ` -> ${state.target}` : ''}
+          </span>
+        )}
 
-          {/* Action */}
-          {state.action && (
-            <span className="text-[10px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
-              {state.action}{state.target ? ` -> ${state.target}` : ''}
-            </span>
-          )}
+        {/* Reasoning */}
+        {state.reasoning && (
+          <span className="text-[10px] truncate italic" style={{ color: 'var(--color-text-muted)' }}>
+            {state.reasoning}
+          </span>
+        )}
 
-          {/* Reasoning */}
-          {state.reasoning && (
-            <span className="text-[10px] truncate italic" style={{ color: 'var(--color-text-muted)' }}>
-              {state.reasoning}
-            </span>
-          )}
-
-          {/* Rewards */}
-          <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span className="text-[9px] font-mono" style={{ color: state.globalReward >= 0 ? '#a6e22e' : '#f92672' }}>
-              R: {state.globalReward.toFixed(2)}
-            </span>
-            <span className="text-[9px] font-mono" style={{ color: 'var(--color-text-muted)' }}>
-              Day {state.day}
-            </span>
-          </div>
+        {/* Rewards */}
+        <div className="ml-auto flex items-center gap-3 shrink-0">
+          <span className="text-[9px] font-mono" style={{ color: state.globalReward >= 0 ? '#a6e22e' : '#f92672' }}>
+            R: {state.globalReward.toFixed(2)}
+          </span>
+          <span className="text-[9px] font-mono" style={{ color: 'var(--color-text-muted)' }}>
+            Day {state.day}
+          </span>
         </div>
+      </div>
 
-        {/* Divider */}
-        <div className="w-px h-8" style={{ background: 'var(--color-border)' }} />
-
-        {/* Episode Controls */}
-        <div className="shrink-0" style={{ width: 420 }}>
-          <EpisodeControls />
-        </div>
+      {/* Episode Controls Bar — full width */}
+      <div
+        className="shrink-0 h-10 relative"
+        style={{
+          background: 'var(--color-panel)',
+          borderTop: '1px solid var(--color-border)',
+          zIndex: 30,
+        }}
+      >
+        <EpisodeControls />
       </div>
     </div>
   )

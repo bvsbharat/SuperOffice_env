@@ -55,6 +55,7 @@ export interface PhaserBridge {
   zoomIn(): void
   zoomOut(): void
   resetCamera(): void
+  setViewInsets(left: number, right: number): void
 }
 
 export class OfficeScene extends Phaser.Scene {
@@ -67,6 +68,8 @@ export class OfficeScene extends Phaser.Scene {
   private camStartScrollX = 0
   private camStartScrollY = 0
   private defaultZoom = 1
+  private viewInsetLeft = 0
+  private viewInsetRight = 0
   bridge: PhaserBridge | null = null
 
   constructor() {
@@ -80,6 +83,7 @@ export class OfficeScene extends Phaser.Scene {
     this.load.image('room_builder', '/game/tilesets/Room_Builder_32x32.png')
     this.load.image('village_b', '/game/tilesets/CuteRPG_Village_B.png')
     this.load.image('forest_b', '/game/tilesets/CuteRPG_Forest_B.png')
+    this.load.image('forest_c', '/game/tilesets/CuteRPG_Forest_C.png')
     this.load.image('interiors_1', '/game/tilesets/interiors_pt1.png')
     this.load.image('interiors_2', '/game/tilesets/interiors_pt2.png')
     this.load.image('interiors_3', '/game/tilesets/interiors_pt3.png')
@@ -99,7 +103,7 @@ export class OfficeScene extends Phaser.Scene {
   create() {
     // Apply NEAREST filter to pixel-art textures so they stay crisp
     const pixelArtKeys = [
-      'field_b', 'field_c', 'room_builder', 'village_b', 'forest_b',
+      'field_b', 'field_c', 'room_builder', 'village_b', 'forest_b', 'forest_c',
       'interiors_1', 'interiors_2', 'interiors_3', 'interiors_4', 'blocks',
       ...AGENT_ORDER,
     ]
@@ -117,30 +121,38 @@ export class OfficeScene extends Phaser.Scene {
     const roomBuilder = map.addTilesetImage('Room_Builder_32x32', 'room_builder')!
     const villageB = map.addTilesetImage('CuteRPG_Village_B', 'village_b')!
     const forestB = map.addTilesetImage('CuteRPG_Forest_B', 'forest_b')!
+    const forestC = map.addTilesetImage('CuteRPG_Forest_C', 'forest_c')!
     const interiors1 = map.addTilesetImage('interiors_pt1', 'interiors_1')!
     const interiors2 = map.addTilesetImage('interiors_pt2', 'interiors_2')!
     const interiors3 = map.addTilesetImage('interiors_pt3', 'interiors_3')!
     const interiors4 = map.addTilesetImage('interiors_pt4', 'interiors_4')!
 
-    const allTilesets = [fieldB, fieldC, roomBuilder, villageB, forestB, interiors1, interiors2, interiors3, interiors4]
+    const allTilesets = [fieldB, fieldC, roomBuilder, villageB, forestB, forestC, interiors1, interiors2, interiors3, interiors4]
 
-    // Create layers with depth ordering
-    const bottomGround = map.createLayer('Bottom Ground', allTilesets)
+    // Create layers at (0,0) with depth ordering (matching Smallville layer structure)
+    const bottomGround = map.createLayer('Bottom Ground', allTilesets, 0, 0)
     if (bottomGround) bottomGround.setDepth(0)
 
-    const interiorGround = map.createLayer('Interior Ground', allTilesets)
+    const extDecoL1 = map.createLayer('Exterior Decoration L1', allTilesets, 0, 0)
+    if (extDecoL1) extDecoL1.setDepth(0.5)
+
+    const extDecoL2 = map.createLayer('Exterior Decoration L2', allTilesets, 0, 0)
+    if (extDecoL2) extDecoL2.setDepth(0.6)
+
+    const interiorGround = map.createLayer('Interior Ground', allTilesets, 0, 0)
     if (interiorGround) interiorGround.setDepth(1)
 
-    const wall = map.createLayer('Wall', allTilesets)
+    const wall = map.createLayer('Wall', allTilesets, 0, 0)
     if (wall) wall.setDepth(2)
 
-    const furnitureL1 = map.createLayer('Interior Furniture L1', allTilesets)
+    const furnitureL1 = map.createLayer('Interior Furniture L1', allTilesets, 0, 0)
     if (furnitureL1) furnitureL1.setDepth(3)
 
-    const furnitureL2 = map.createLayer('Interior Furniture L2', allTilesets)
+    const furnitureL2 = map.createLayer('Interior Furniture L2', allTilesets, 0, 0)
     if (furnitureL2) furnitureL2.setDepth(4)
 
-    const foreground = map.createLayer('Foreground L1', allTilesets)
+    // Foreground layers at depth 10 (above agents at 6-7, like Smallville's depth 2 above player)
+    const foreground = map.createLayer('Foreground L1', allTilesets, 0, 0)
     if (foreground) foreground.setDepth(10)
 
     // Create agent sprites (depth 5-9, between furniture and foreground)
@@ -148,19 +160,30 @@ export class OfficeScene extends Phaser.Scene {
       this.createAgentSprite(aid)
     }
 
-    // Set up camera — fit map, allow free panning
+    // Set up camera — fit map to visible area, allow free panning
+    // (Smallville uses camera.setBounds + fixed canvas; we use a responsive
+    //  layout with transparent canvas over CSS green, so we skip bounds to
+    //  allow sidebar-aware centering.)
     const mapW = MAP_COLS * TILE_SIZE
     const mapH = MAP_ROWS * TILE_SIZE
 
     const fitCamera = () => {
-      const cam = this.cameras.main
+      const cam = this.cameras?.main
+      if (!cam) return
+      cam.setRoundPixels(true)
       const vw = this.scale.width
       const vh = this.scale.height
-      // Fit entire building inside viewport (no overflow)
-      const zoom = Math.min(vw / BUILDING_W, vh / BUILDING_H)
+      // Visible area after subtracting sidebar overlays
+      const visibleW = vw - this.viewInsetLeft - this.viewInsetRight
+      // Add padding so edge plants/assets aren't clipped
+      const PAD = TILE_SIZE * 4
+      const zoom = Math.min(visibleW / (BUILDING_W + PAD), vh / (BUILDING_H + PAD))
       this.defaultZoom = zoom
       cam.setZoom(zoom)
-      cam.centerOn(BUILDING_CENTER_X, BUILDING_CENTER_Y)
+      // Offset center so map is centered in the visible area (between sidebars)
+      // Positive insetLeft → visible center is right of canvas center → scroll camera left
+      const offsetX = (this.viewInsetRight - this.viewInsetLeft) / 2 / zoom
+      cam.centerOn(BUILDING_CENTER_X + offsetX, BUILDING_CENTER_Y)
     }
     fitCamera()
     this.scale.on('resize', fitCamera)
@@ -258,9 +281,12 @@ export class OfficeScene extends Phaser.Scene {
         cam.setZoom(Phaser.Math.Clamp(cam.zoom - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))
       },
       resetCamera: () => {
-        const cam = this.cameras.main
-        cam.setZoom(this.defaultZoom)
-        cam.centerOn(BUILDING_CENTER_X, BUILDING_CENTER_Y)
+        fitCamera()
+      },
+      setViewInsets: (left: number, right: number) => {
+        this.viewInsetLeft = left
+        this.viewInsetRight = right
+        fitCamera()
       },
     }
   }

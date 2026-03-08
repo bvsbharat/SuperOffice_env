@@ -461,8 +461,8 @@ export function RewardPanel() {
 
       {/* Full-screen reward modal — fixed dark theme regardless of app theme */}
       {fullView && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 1200, height: '92vh', maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)', margin: '0 auto', borderRadius: 12, boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px var(--color-border)', overflow: 'hidden' }}>
 
             {/* ── Modal header ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
@@ -523,13 +523,15 @@ export function RewardPanel() {
                   <div style={{ padding: 20, borderRight: `1px solid ${C.border}`, overflowY: 'auto' }}>
                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.muted, marginBottom: 14 }}>Agent Leaderboard</div>
 
-                    {agentStats.map((a, rank) => (
-                      <div key={a.id} style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: C.card, border: `1px solid ${C.border}`, overflow: 'hidden', minWidth: 0 }}>
+                    {agentStats.map((a, rank) => {
+                      const agentColor = agents[a.id as AgentId]?.color || '#64748b'
+                      return (
+                      <div key={a.id} style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: C.card, border: `1px solid ${C.border}`, borderLeft: `3px solid ${agentColor}`, overflow: 'hidden', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, minWidth: 0 }}>
                           <span style={{ minWidth: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{rank < 3 ? <Medal size={16} style={{ color: medalColors[rank] }} /> : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-faint)' }}>#{rank + 1}</span>}</span>
-                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: '2px solid var(--color-border)', flexShrink: 0 }} alt="" />
+                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: `2px solid ${agentColor}`, flexShrink: 0 }} alt="" />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: agentColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
                             <div style={{ fontSize: 9, color: C.muted }}>{a.actions} actions</div>
                           </div>
                           <div style={{ fontSize: 17, fontFamily: 'monospace', fontWeight: 800, color: a.total >= 0 ? C.green : C.red }}>
@@ -575,7 +577,8 @@ export function RewardPanel() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
 
                     {/* Final KPIs */}
                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.muted, margin: '18px 0 10px' }}>Final KPIs</div>

@@ -712,7 +712,7 @@ function Trees() {
 export default function Office3D({ agents }: Office3DProps) {
   return (
     <div className="w-full h-full bg-sky-200">
-      <Canvas shadows camera={{ position: [-18, 16, 18], fov: 45 }}>
+      <Canvas shadows={{ type: THREE.PCFShadowMap }} camera={{ position: [-18, 16, 18], fov: 45 }}>
         <ambientLight intensity={0.6} />
         <directionalLight
           castShadow

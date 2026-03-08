@@ -58,13 +58,25 @@ export default function App() {
       .catch(() => {})
   }, [applyFullState])
 
-  // Update camera insets when sidebars toggle
+  // Shift+L toggles both sidebars
   useEffect(() => {
-    if (!bridge) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.shiftKey && e.key === 'L') {
+        togglePanel('bottomPanel')
+        togglePanel('rightSidebar')
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [togglePanel])
+
+  // Update camera insets when sidebars toggle (only in office view)
+  useEffect(() => {
+    if (!bridge || viewMode === '4d' || viewMode === 'playground') return
     const left = panelVisibility.bottomPanel ? 340 : 0
     const right = panelVisibility.rightSidebar ? 384 : 0
     bridge.setViewInsets(left, right)
-  }, [bridge, panelVisibility.bottomPanel, panelVisibility.rightSidebar])
+  }, [bridge, viewMode, panelVisibility.bottomPanel, panelVisibility.rightSidebar])
 
   return (
     <div className="h-screen flex flex-col overflow-hidden select-none" style={{ background: 'var(--color-surface)' }}>
@@ -257,120 +269,125 @@ export default function App() {
           </>
         )}
 
-        {/* ── Left sidebar toggle ── */}
-        <motion.button
-          onClick={() => togglePanel('bottomPanel')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="absolute top-2 z-30 flex items-center justify-center"
-          style={{
-            left: panelVisibility.bottomPanel ? 340 : 0,
-            width: 20,
-            height: 36,
-            background: 'var(--color-panel)',
-            border: '1px solid var(--color-border)',
-            borderLeft: panelVisibility.bottomPanel ? 'none' : '1px solid var(--color-border)',
-            borderRadius: '0 4px 4px 0',
-            color: 'var(--color-text-faint)',
-            cursor: 'pointer',
-            transition: 'left 0.3s ease-in-out',
-          }}
-        >
-          {panelVisibility.bottomPanel ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
-        </motion.button>
-
-        {/* ── Left sidebar — Conversation Log ── */}
-        <AnimatePresence initial={false}>
-          {panelVisibility.bottomPanel && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 340, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="absolute left-0 top-0 z-20 flex flex-col overflow-hidden"
-              style={{ bottom: 48, borderRight: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+        {/* ── Sidebars (office view only — 4D has its own panels) ── */}
+        {viewMode !== '4d' && viewMode !== 'playground' && (
+          <>
+            {/* ── Left sidebar toggle ── */}
+            <motion.button
+              onClick={() => togglePanel('bottomPanel')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="absolute top-2 z-30 flex items-center justify-center"
+              style={{
+                left: panelVisibility.bottomPanel ? 340 : 0,
+                width: 20,
+                height: 36,
+                background: 'var(--color-panel)',
+                border: '1px solid var(--color-border)',
+                borderLeft: panelVisibility.bottomPanel ? 'none' : '1px solid var(--color-border)',
+                borderRadius: '0 4px 4px 0',
+                color: 'var(--color-text-faint)',
+                cursor: 'pointer',
+                transition: 'left 0.3s ease-in-out',
+              }}
             >
-              <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
-                <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <ConversationLog />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              {panelVisibility.bottomPanel ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+            </motion.button>
 
-        {/* ── Right sidebar toggle ── */}
-        <motion.button
-          onClick={() => togglePanel('rightSidebar')}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="absolute top-2 z-30 flex items-center justify-center"
-          style={{
-            right: panelVisibility.rightSidebar ? 384 : 0,
-            width: 20,
-            height: 36,
-            background: 'var(--color-panel)',
-            border: '1px solid var(--color-border)',
-            borderRight: panelVisibility.rightSidebar ? 'none' : '1px solid var(--color-border)',
-            borderRadius: '4px 0 0 4px',
-            color: 'var(--color-text-faint)',
-            cursor: 'pointer',
-            transition: 'right 0.3s ease-in-out',
-          }}
-        >
-          {panelVisibility.rightSidebar ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-        </motion.button>
+            {/* ── Left sidebar — Conversation Log ── */}
+            <AnimatePresence initial={false}>
+              {panelVisibility.bottomPanel && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 340, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  className="absolute left-0 top-0 z-20 flex flex-col overflow-hidden"
+                  style={{ bottom: 48, borderRight: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+                >
+                  <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
+                    <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <ConversationLog />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* ── Right sidebar — Dashboard / Agents / Rewards ── */}
-        <AnimatePresence initial={false}>
-          {panelVisibility.rightSidebar && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 384, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="absolute right-0 top-0 z-20 flex flex-col overflow-hidden"
-              style={{ bottom: 48, borderLeft: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+            {/* ── Right sidebar toggle ── */}
+            <motion.button
+              onClick={() => togglePanel('rightSidebar')}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="absolute top-2 z-30 flex items-center justify-center"
+              style={{
+                right: panelVisibility.rightSidebar ? 384 : 0,
+                width: 20,
+                height: 36,
+                background: 'var(--color-panel)',
+                border: '1px solid var(--color-border)',
+                borderRight: panelVisibility.rightSidebar ? 'none' : '1px solid var(--color-border)',
+                borderRadius: '4px 0 0 4px',
+                color: 'var(--color-text-faint)',
+                cursor: 'pointer',
+                transition: 'right 0.3s ease-in-out',
+              }}
             >
-              <div className="flex shrink-0 relative" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
-                {([['dashboard', 'DASHBOARD'], ['agents', 'AGENTS'], ['rewards', 'REWARD ANALYSIS']] as const).map(([tab, label]) => (
-                  <button
-                    key={tab}
-                    onClick={() => setRightTab(tab)}
-                    className="text-[10px] px-4 py-2 font-semibold transition-colors relative"
-                    style={{
-                      color: rightTab === tab ? '#ffffff' : 'var(--color-text-muted)',
-                    }}
-                  >
-                    {label}
-                    {rightTab === tab && (
-                      <motion.div
-                        layoutId="rightTabIndicator"
-                        className="absolute bottom-0 left-0 right-0"
-                        style={{ height: 2, background: '#ffffff' }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      />
-                    )}
-                  </button>
-                ))}
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-2">
-                {rightTab === 'dashboard' ? (
-                  <MarketDashboard />
-                ) : rightTab === 'agents' ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {AGENT_ORDER.map(aid => (
-                      <AgentCard key={aid} agent={agents[aid as AgentId]} />
+              {panelVisibility.rightSidebar ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+            </motion.button>
+
+            {/* ── Right sidebar — Dashboard / Agents / Rewards ── */}
+            <AnimatePresence initial={false}>
+              {panelVisibility.rightSidebar && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: 384, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  className="absolute right-0 top-0 z-20 flex flex-col overflow-hidden"
+                  style={{ bottom: 48, borderLeft: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
+                >
+                  <div className="flex shrink-0 relative" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
+                    {([['dashboard', 'DASHBOARD'], ['agents', 'AGENTS'], ['rewards', 'REWARD ANALYSIS']] as const).map(([tab, label]) => (
+                      <button
+                        key={tab}
+                        onClick={() => setRightTab(tab)}
+                        className="text-[10px] px-4 py-2 font-semibold transition-colors relative"
+                        style={{
+                          color: rightTab === tab ? '#ffffff' : 'var(--color-text-muted)',
+                        }}
+                      >
+                        {label}
+                        {rightTab === tab && (
+                          <motion.div
+                            layoutId="rightTabIndicator"
+                            className="absolute bottom-0 left-0 right-0"
+                            style={{ height: 2, background: '#ffffff' }}
+                            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                          />
+                        )}
+                      </button>
                     ))}
                   </div>
-                ) : (
-                  <RewardPanel />
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                    {rightTab === 'dashboard' ? (
+                      <MarketDashboard />
+                    ) : rightTab === 'agents' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {AGENT_ORDER.map(aid => (
+                          <AgentCard key={aid} agent={agents[aid as AgentId]} />
+                        ))}
+                      </div>
+                    ) : (
+                      <RewardPanel />
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
 
       </div>
     </div>

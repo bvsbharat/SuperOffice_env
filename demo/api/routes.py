@@ -177,21 +177,22 @@ GLOBAL REWARD = sum of all per-agent rewards across the episode
 
 @router.post("/api/validate-rubric")
 async def validate_rubric():
-    """Use Claude Opus 4.6 to validate the reward rubric against RL best practices."""
+    """Stream Claude Opus 4.6 validation of the reward rubric via SSE."""
+    from fastapi.responses import StreamingResponse
     import sys as _sys
     import anthropic as _anthropic
-    import json as _json
+    import os as _os
 
     _main = _sys.modules.get("__main__")
     bc = getattr(_main, "bridge_config", None) or {}
     aws_region = bc.get("aws_region", "us-east-1")
 
-    # Split into system + user exactly as llm_agent._call_structured does
     system_prompt = (
         "You are a reinforcement learning expert specialising in LLM agent training, "
         "multi-agent systems, and reward function design. "
         "When asked to evaluate a reward function, return ONLY a valid JSON object — "
-        "no markdown fences, no explanation outside the JSON."
+        "no markdown fences, no explanation outside the JSON. "
+        "Keep each detail field to 1-2 sentences. Be concise."
     )
     user_msg = (
         "Evaluate the reward function below against established RL best practices:\n"
@@ -217,48 +218,66 @@ async def validate_rubric():
         "}"
     )
 
-    try:
-        import traceback as _tb
-        import os as _os
+    bedrock_kwargs: dict = {"aws_region": aws_region}
+    if _os.environ.get("AWS_ACCESS_KEY_ID"):
+        bedrock_kwargs["aws_access_key"] = _os.environ["AWS_ACCESS_KEY_ID"]
+    if _os.environ.get("AWS_SECRET_ACCESS_KEY"):
+        bedrock_kwargs["aws_secret_key"] = _os.environ["AWS_SECRET_ACCESS_KEY"]
+    if _os.environ.get("AWS_SESSION_TOKEN"):
+        bedrock_kwargs["aws_session_token"] = _os.environ["AWS_SESSION_TOKEN"]
 
-        # Build kwargs for AnthropicBedrock — mirror the same pattern as llm_agent.py
-        bedrock_kwargs: dict = {"aws_region": aws_region}
-        if _os.environ.get("AWS_ACCESS_KEY_ID"):
-            bedrock_kwargs["aws_access_key"] = _os.environ["AWS_ACCESS_KEY_ID"]
-        if _os.environ.get("AWS_SECRET_ACCESS_KEY"):
-            bedrock_kwargs["aws_secret_key"] = _os.environ["AWS_SECRET_ACCESS_KEY"]
-        if _os.environ.get("AWS_SESSION_TOKEN"):
-            bedrock_kwargs["aws_session_token"] = _os.environ["AWS_SESSION_TOKEN"]
+    validation_model = "us.anthropic.claude-opus-4-6-v1"
 
-        # Validation uses Opus 4.6 for expert-quality RL analysis
-        validation_model = "us.anthropic.claude-opus-4-6-v1[1m]"  # user-confirmed ID
-        logger.info("validate-rubric: using model %s", validation_model)
+    client = _anthropic.AnthropicBedrock(**bedrock_kwargs)
 
-        client = _anthropic.AnthropicBedrock(**bedrock_kwargs)
-
-        def _call():
-            # Same pattern as llm_agent._call_structured: system + user message
-            resp = client.messages.create(
+    async def event_stream():
+        """Yield SSE events: text chunks then a final [DONE] with parsed JSON."""
+        import re as _re
+        full_text = ""
+        try:
+            # Use streaming — each chunk is sent to the frontend as it arrives
+            with client.messages.stream(
                 model=validation_model,
-                max_tokens=2048,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_msg}],
-            )
-            return resp.content[0].text.strip()
+            ) as stream:
+                for chunk in stream.text_stream:
+                    full_text += chunk
+                    # Send raw text chunk as SSE event
+                    yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
 
-        loop = asyncio.get_running_loop()
-        text = await loop.run_in_executor(None, _call)
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start < 0 or end <= start:
-            raise ValueError(f"No JSON in response. Raw text: {text[:300]}")
-        result = _json.loads(text[start:end])
-        result["validated_by"] = validation_model
-        return result
-    except Exception as e:
-        detail = f"{type(e).__name__}: {e}"
-        logger.error("validate-rubric failed: %s\n%s", detail, _tb.format_exc())
-        raise HTTPException(status_code=500, detail=detail)
+            # Stream done — parse JSON from accumulated text
+            cleaned = full_text.strip()
+            cleaned = _re.sub(r'^```(?:json|JSON)?\s*\n?', '', cleaned)
+            cleaned = _re.sub(r'\n?```\s*$', '', cleaned)
+            cleaned = cleaned.strip()
+            cleaned = _re.sub(r',\s*([}\]])', r'\1', cleaned)
+
+            # Extract balanced { ... }
+            start = cleaned.find("{")
+            if start >= 0:
+                depth = 0
+                end = len(cleaned)
+                for i in range(start, len(cleaned)):
+                    if cleaned[i] == '{': depth += 1
+                    elif cleaned[i] == '}': depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+                extracted = _re.sub(r',\s*([}\]])', r'\1', cleaned[start:end])
+                import json as _json
+                result = _json.loads(extracted)
+                result["validated_by"] = validation_model
+                yield f"data: {json.dumps({'type': 'done', 'result': result})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'No JSON in response'})}\n\n"
+
+        except Exception as e:
+            logger.error("validate-rubric stream error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/api/scenarios")

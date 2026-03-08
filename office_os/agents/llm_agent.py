@@ -49,11 +49,13 @@ class ReflectionOutput(BaseModel):
 
 
 def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
-    """Lazy-load the Anthropic client."""
+    """Lazy-load the Anthropic client (direct API or Bedrock)."""
     try:
         import anthropic
     except ImportError:
         raise ImportError("anthropic is required. Install with: pip install anthropic")
+    if provider == "bedrock":
+        return anthropic.AnthropicBedrock(aws_region=aws_region)
     return anthropic.Anthropic()
 
 
