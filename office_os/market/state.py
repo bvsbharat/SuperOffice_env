@@ -70,6 +70,7 @@ class ContentPiece:
     published: bool = False
     engagement: float = 0.0
     leads_generated: int = 0
+    turns_remaining: int = 0
 
 
 @dataclass
@@ -202,6 +203,8 @@ class MarketState:
     _customer_pool_index: int = 0
     _next_customer_day: int = 1
     _rng: random.Random = field(default_factory=lambda: random.Random())
+    _last_referral_day: int = 0
+    _renewed_customer_ids: dict = field(default_factory=dict)
 
     @classmethod
     def initial(cls, seed: int | None = None, scenario: str = "baseline") -> MarketState:
@@ -399,7 +402,8 @@ class MarketState:
             last_contacted_day=self.day,
         )
         self.customers.append(customer)
-        self._stage_transitions.append(customer)
+        # NOTE: callers handle _stage_transitions when they advance stage.
+        # Don't append here to avoid double-counting.
 
         # Schedule next customer
         self._next_customer_day = self.day + self._rng.randint(

@@ -25,7 +25,7 @@ class MarketSimulator:
     def execute_action(self, agent_id: str, action_type: str, target: str, parameters: dict, message: str | None) -> dict:
         """Execute an agent's action and return a result summary."""
         role = agent_id  # agent_id is the role name
-        result = {"agent_id": agent_id, "action_type": action_type, "success": True, "detail": ""}
+        result = {"agent_id": agent_id, "action_type": action_type, "success": True, "detail": "", "parameters": parameters}
 
         # Validate action is allowed for this role
         if action_type not in ROLE_ACTIONS.get(role, []):
@@ -381,7 +381,15 @@ class MarketSimulator:
             "WRITE_EMAIL_SEQUENCE": "email_sequence",
             "WRITE_DOCS": "docs",
         }
+        turns_map = {
+            "WRITE_BLOG": self.cfg.blog_write_turns,
+            "WRITE_CASE_STUDY": self.cfg.case_study_write_turns,
+            "WRITE_EMAIL_SEQUENCE": self.cfg.email_write_turns,
+            "WRITE_DOCS": self.cfg.docs_write_turns,
+            "WRITE_SOCIAL_POST": 1,  # Social posts are instant
+        }
         content_type = type_map[action_type]
+        required_turns = turns_map[action_type]
 
         # Check vaporware: if content references an unshipped feature, penalize
         references_feature = parameters.get("feature")
@@ -392,6 +400,43 @@ class MarketSimulator:
                 result["detail"] = f"Cannot write about unshipped feature '{references_feature}'"
                 return result
 
+        # Check for in-progress content with same target
+        existing = next(
+            (p for p in self.state.content_pieces
+             if p.title == target and not p.published and p.content_type == content_type),
+            None,
+        )
+
+        if existing:
+            # Continue working on existing piece
+            existing.turns_remaining -= 1
+            if existing.turns_remaining <= 0:
+                existing.published = True
+                # Now generate traffic/leads on publish
+                quality = existing.quality
+                traffic_boost = int(quality * self.state._rng.randint(50, 300))
+                self.state.website_traffic += traffic_boost
+                self.state.brand_awareness = min(100.0, self.state.brand_awareness + quality)
+
+                # Content can attract visitors -> leads
+                if self.state._rng.random() < quality * 0.3:
+                    new_customer = self.state.maybe_spawn_customer()
+                    if new_customer:
+                        new_customer.source = content_type
+                        new_customer.content_touchpoints.append(existing.title)
+                        new_customer.previous_stage = "visitor"
+                        new_customer.stage = "lead"
+                        self.state._stage_transitions.append(new_customer)
+                        existing.leads_generated += 1
+                        result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}. Generated lead: {new_customer.name}"
+                        return result
+
+                result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}"
+            else:
+                result["detail"] = f"Working on '{target}': {existing.turns_remaining} turns remaining"
+            return result
+
+        # Start new content piece
         quality = self.state._rng.uniform(0.4, 0.9)
         piece = ContentPiece(
             id=str(uuid4())[:8],
@@ -399,31 +444,38 @@ class MarketSimulator:
             title=target,
             topic=parameters.get("topic", target),
             quality=quality,
-            published=True,
+            published=False,
+            turns_remaining=required_turns - 1,
         )
+
+        # If only 1 turn required (social_post), publish immediately
+        if piece.turns_remaining <= 0:
+            piece.published = True
+
         self.state.content_pieces.append(piece)
 
-        # Content generates traffic and potentially leads
-        traffic_boost = int(quality * self.state._rng.randint(50, 300))
-        self.state.website_traffic += traffic_boost
-        self.state.brand_awareness = min(100.0, self.state.brand_awareness + quality)
+        if piece.published:
+            # Instant publish (social posts)
+            traffic_boost = int(quality * self.state._rng.randint(50, 300))
+            self.state.website_traffic += traffic_boost
+            self.state.brand_awareness = min(100.0, self.state.brand_awareness + quality)
 
-        # Content can attract visitors -> leads
-        if self.state._rng.random() < quality * 0.3:
-            # Create a new lead attracted by this content
-            new_customer = self.state.maybe_spawn_customer()
-            if new_customer:
-                new_customer.source = content_type
-                new_customer.content_touchpoints.append(piece.title)
-                # Auto-advance to lead since content attracted them
-                new_customer.previous_stage = "visitor"
-                new_customer.stage = "lead"
-                self.state._stage_transitions.append(new_customer)
-                piece.leads_generated += 1
-                result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}. Generated lead: {new_customer.name}"
-                return result
+            if self.state._rng.random() < quality * 0.3:
+                new_customer = self.state.maybe_spawn_customer()
+                if new_customer:
+                    new_customer.source = content_type
+                    new_customer.content_touchpoints.append(piece.title)
+                    new_customer.previous_stage = "visitor"
+                    new_customer.stage = "lead"
+                    self.state._stage_transitions.append(new_customer)
+                    piece.leads_generated += 1
+                    result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}. Generated lead: {new_customer.name}"
+                    return result
 
-        result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}"
+            result["detail"] = f"Published {content_type}: '{target}' (quality: {quality:.2f}). Traffic +{traffic_boost}"
+        else:
+            result["detail"] = f"Started writing '{target}': {piece.turns_remaining} turns remaining"
+
         return result
 
     def _content_revise(self, target: str, result: dict) -> dict:
@@ -517,14 +569,21 @@ class MarketSimulator:
             self.state.feedback.append(fb)
             result["detail"] = f"Customer feedback: {parameters.get('feedback', target)[:60]}"
         elif action_type == "REFER_LEAD":
+            # 5-day cooldown between referrals
+            if self.state.day - self.state._last_referral_day < 5:
+                result["success"] = False
+                result["detail"] = f"Referral cooldown: wait {5 - (self.state.day - self.state._last_referral_day)} more day(s)"
+                return result
             new_customer = self.state.maybe_spawn_customer()
             if new_customer:
                 new_customer.source = "referral"
                 new_customer.previous_stage = "visitor"
                 new_customer.stage = "lead"
                 self.state._stage_transitions.append(new_customer)
+                self.state._last_referral_day = self.state.day
                 result["detail"] = f"Customer referral! New lead: {new_customer.name}"
             else:
+                self.state._last_referral_day = self.state.day
                 result["detail"] = "Referral noted, lead will arrive soon"
         elif action_type == "ESCALATE_ISSUE":
             self.state.bug_reports.append({"id": str(uuid4())[:8], "name": target, "severity": "high", "reported_by": "customer"})
@@ -535,10 +594,17 @@ class MarketSimulator:
             won = [c for c in self.state.customers if c.stage == "closed_won"]
             if won:
                 customer = won[0]
+                # Only allow renewal once per 30 days per customer
+                last_renewal_day = self.state._renewed_customer_ids.get(customer.id, 0)
+                if self.state.day - last_renewal_day < 30:
+                    result["success"] = False
+                    result["detail"] = f"Contract for {customer.name} already renewed recently. Wait {30 - (self.state.day - last_renewal_day)} more day(s)."
+                    return result
                 renewal_rev = customer.budget * 0.1  # 10% renewal bonus
                 self.state.revenue += renewal_rev
                 self.state.total_revenue += renewal_rev
                 self.state.customer_satisfaction = min(1.0, self.state.customer_satisfaction + 0.1)
+                self.state._renewed_customer_ids[customer.id] = self.state.day
                 result["detail"] = f"Contract renewed for {customer.name}! +${renewal_rev:,.0f} revenue"
             else:
                 result["detail"] = "No active contracts to renew"

@@ -46,7 +46,7 @@ class OfficeOsObservation(Observation):
     """What an agent sees after a step. Asymmetric per role."""
 
     agent_id: str = Field(default="", description="Which agent this observation is for")
-    day: int = Field(default=1, description="Current simulation day (1-90)")
+    day: int = Field(default=1, description="Current simulation day")
     phase: str = Field(default="morning_standup", description="Current day phase")
 
     # KPIs (scoped per agent role)
