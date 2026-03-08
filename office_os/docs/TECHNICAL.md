@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-Office OS is a multi-agent simulation built on Meta's [OpenEnv](https://github.com/meta-pytorch/openenv) framework. Seven LLM-powered agents operate a SaaS startup over 90 simulated days, making autonomous decisions through a shared environment with asymmetric observations, individual memory streams, and a team knowledge board.
+Office OS is a multi-agent simulation built on Meta's [OpenEnv](https://github.com/meta-pytorch/openenv) framework. Seven LLM-powered agents operate a SaaS startup over 30 simulated days per episode, making autonomous decisions through a shared environment with asymmetric observations, individual memory streams, and a team knowledge board.
 
 ```
                           ┌──────────────────────────────────┐
@@ -95,11 +95,11 @@ Agents earn rewards when customers advance through pipeline stages. Each stage h
 | visitor | — | — | — | +0.5 | — | — | — |
 | lead | — | +1.5 | — | +1.0 | — | — | — |
 | qualified | +1.0 | — | — | — | — | +0.3 | — |
-| demo | +1.5 | — | +0.5 | — | — | — | — |
+| demo | +1.5 | — | +1.0 | — | — | — | — |
 | proposal | +2.0 | — | — | — | — | — | — |
 | closed_won | +10.0 | +3.0 | +2.0 | +2.0 | +5.0 | +1.0 | +2.0 |
-| closed_lost | -3.0 | -1.0 | — | — | -2.0 | — | — |
-| churned | -3.0 | -1.0 | -5.0 | -1.0 | -3.0 | — | -5.0 |
+| closed_lost | -3.0 | -1.0 | — | -0.5 | -2.0 | -0.5 | — |
+| churned | -3.0 | -1.0 | -5.0 | -2.0 | -3.0 | -1.0 | -5.0 |
 
 Contract tier multipliers on `closed_won`: monthly (1x), 6-month (2x), annual (3x).
 
@@ -109,9 +109,14 @@ Small rewards for improving company-wide metrics between turns:
 
 | KPI | Primary beneficiary | Reward formula |
 |-----|---------------------|----------------|
-| Website traffic increase | Marketing, Content (+1x) / Others (+0.2x) | `min(delta / 500, 1.0)` |
+| Website traffic increase | Marketing, Content (+1x, diminishing after 5 pieces) / Others (+0.2x) | `min(delta / 500, 1.0)` |
 | Revenue increase | Sales (+2x) / Others (+0.5x) | `min(delta / 5000, 2.0)` |
 | Pipeline value increase | Sales | `min(delta / 10000, 1.0)` |
+| Product stability increase | Dev | `min(delta * 15, 1.5)` |
+| Customer satisfaction increase | All roles (+2x per delta) | `sat_delta * 2.0` |
+| Customer satisfaction decrease | Dev, Sales, CEO | `sat_delta * 1.5` (penalty) |
+| NPS improvement | All roles | `min(nps_delta / 20, 0.5)` |
+| NPS drop > 5 | Dev, Sales, Customer | -0.3 |
 
 **Component 3: Direct Action Rewards**
 
@@ -120,17 +125,27 @@ Specific high-impact actions carry inherent rewards:
 | Agent | Action | Reward | Condition |
 |-------|--------|--------|-----------|
 | Dev | `SHIP_RELEASE` | +3.0 | Feature successfully shipped |
-| Dev | `BUILD_FEATURE` | +0.5 | Build progress made |
-| Content | Any publish | +0.5 | Content published |
+| Dev | `BUILD_FEATURE` | +1.0 | Feature ready to ship |
+| Dev | `BUILD_FEATURE` | +0.5 | Build progress (turns remaining) |
+| Dev | `FIX_BUG` | +0.8 | Bug fixed (+0.5 empathy bonus if customer-reported) |
+| Dev | `REFACTOR` | +0.5 | Code quality improvement |
+| Dev | `WRITE_DOCS` | +0.3 | Documentation written |
+| Dev | `REVIEW_PR` | +0.3 | PR reviewed |
+| Content | Any publish | +0.3 | Content published |
+| Content | Work in progress | +0.2 | Content being written (turns remaining) |
 | CEO | `SET_OKRS` | +1.0 | — |
 | CEO | `SEND_DIRECTIVE` | +0.3 | — |
 | HR | `RESOLVE_BLOCKER` | +1.5 | — |
 | HR | `PLAN_SPRINT` | +0.5 | — |
 | HR | Velocity boost | +1.0 | Action mentions velocity |
-| Customer | `REFER_LEAD` | +2.0 | New lead generated |
-| Customer | `RENEW_CONTRACT` | +3.0 | Contract renewed |
+| Sales | `FOLLOW_UP` | +0.3 | Customer follow-up |
+| Sales | `COLLECT_FEEDBACK` | +0.5 | Feedback collected |
+| Customer | `REFER_LEAD` | +1.0 | New lead generated |
+| Customer | `RENEW_CONTRACT` | +1.5 | Contract renewed |
 | Customer | `GIVE_FEEDBACK` | +0.5 | — |
 | Customer | `EVALUATE_PRODUCT` | +0.3 | — |
+| Customer | `ESCALATE_ISSUE` | +0.4 | Drives dev to fix bugs |
+| Customer | `REQUEST_FEATURE` | +0.3 | Drives product development |
 | Any | Failed action | -1.0 | `success: false` |
 
 **Component 4: Collaboration Bonuses**
@@ -143,6 +158,15 @@ Cross-agent synergies that reward teamwork:
 | Sales demos use existing content | Sales + Content | +0.5 |
 | Dev builds feature from customer feedback | Dev + Sales | +1.0 |
 | Marketing promotes existing content | Marketing + Content | +0.5 |
+
+**Churn Prevention Bonuses** — When customer satisfaction < 0.4, agents get extra rewards for crisis-appropriate actions:
+
+| Agent | Action | Bonus |
+|-------|--------|-------|
+| Dev | `FIX_BUG`, `REFACTOR` | +0.5 |
+| Sales | `FOLLOW_UP`, `COLLECT_FEEDBACK` | +0.5 |
+| CEO | `REVIEW_STRATEGY`, `SEND_DIRECTIVE` | +0.3 |
+| HR | `RESOLVE_BLOCKER` | +0.5 |
 
 **Component 5: Constraint Penalties**
 
@@ -386,7 +410,7 @@ Simulation (local)  →  POST /train  →  Northflank H100
                                         └── vLLM hot-reload
 ```
 
-Training triggers every N simulation days (configurable). LoRA adapters are hot-loaded into vLLM — models improve without restarting inference.
+Training triggers after each full episode (30 days). LoRA adapters are hot-loaded into vLLM — models improve without restarting inference.
 
 #### GRPO Training Worker (`training/train_worker.py`)
 
@@ -394,6 +418,52 @@ Runs on the Northflank H100, using:
 - **Unsloth** — 4-bit QLoRA for memory-efficient training
 - **TRL GRPO** — Group Relative Policy Optimization
 - **vLLM** — Serves the trained model, hot-loads new LoRA adapters
+
+##### GRPO Algorithm
+
+Group Relative Policy Optimization (GRPO) is an RL algorithm that trains language models by generating multiple completions per prompt, scoring them with reward functions, and using the relative ranking within each group to compute policy gradients. Unlike PPO, GRPO does not require a separate value network — it uses the group mean as the baseline.
+
+**Training Flow:**
+
+1. For each trajectory prompt, GRPO generates `num_generations=4` completions at `temperature=0.9`
+2. Each completion is scored by two reward functions (see below)
+3. Completions above the group mean reward are reinforced; below-mean completions are suppressed
+4. The model is updated via gradient descent on the resulting policy gradient
+
+**LoRA Configuration:**
+
+| Parameter | Value |
+|-----------|-------|
+| Rank (r) | 32 |
+| Alpha | 32 |
+| Target modules | q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj |
+| Quantization | 4-bit (Unsloth QLoRA) |
+| Gradient checkpointing | Unsloth optimized |
+
+**GRPO Training Hyperparameters:**
+
+| Parameter | Value |
+|-----------|-------|
+| Generations per prompt | 4 |
+| Max prompt length | 3072 tokens |
+| Max completion length | 1024 tokens |
+| Temperature | 0.9 |
+| Learning rate | 2e-5 (configurable) |
+| Batch size | 1 (per device) |
+| Gradient accumulation | 4 steps |
+| Training epochs | 3 |
+| Max steps | min(50, num_trajectories × 3) |
+| Precision | bf16 |
+| Optimizer | AdamW 8-bit |
+
+**Post-Training:**
+
+1. LoRA adapter saved to `/tmp/office_os_lora/{role}/adapter`
+2. Optionally pushed to HuggingFace (`HF_REPO` env var)
+3. Hot-loaded into running vLLM via `POST /v1/load_lora_adapter` (no restart needed)
+4. GPU memory freed (model + trainer deleted, CUDA cache emptied)
+
+Subsequent episodes use the trained LoRA adapters — each role improves independently while sharing the same base model.
 
 See [Northflank H100 Setup](northflank-h100-setup.md) for deployment instructions.
 
@@ -430,13 +500,16 @@ Rich terminal UI dashboard showing:
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `INITIAL_BUDGET` | $15,000 | Starting company budget |
+| `INITIAL_BUDGET` | $100,000 | Starting company budget |
 | `MONTHLY_BUDGET_REFRESH` | $10,000 | Budget added each month (every 30 days) |
-| `MAX_DAYS` | 90 | Default simulation length |
-| `PIPELINE_STAGES` | 7 stages | visitor → lead → qualified → demo → proposal → negotiation → closed_won |
+| `EPISODE_DAYS` | 30 | Default episode length |
+| `TURNS_PER_DAY` | 14 | Turns per simulation day (3+8+2+1 across 4 phases) |
+| `PIPELINE_STAGES` | 9 stages | visitor → lead → qualified → demo → proposal → negotiation → closed_won / closed_lost / churned |
 | `CONTRACT_TIERS` | 3 tiers | monthly (1x), 6-month (2x), annual (3x) |
 | `FEATURE_BUILD_TURNS` | 3 | Turns to complete a feature |
-| `CONTENT_WRITE_TURNS` | 1 | Turns to create content |
+| `BLOG_WRITE_TURNS` | 3 | Turns to write a blog post |
+| `CASE_STUDY_WRITE_TURNS` | 4 | Turns to write a case study |
+| `EMAIL_WRITE_TURNS` | 2 | Turns to write an email sequence |
 
 ### Environment Variables
 

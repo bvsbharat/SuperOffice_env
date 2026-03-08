@@ -135,10 +135,6 @@ class OfficeOsEnvironment(Environment):
             action_result=action_result,
         )
 
-        # Google Sheets sync: dashboard + customers on every step
-        self._sheets.update_dashboard(self._market)
-        self._sheets.update_customers(self._market)
-
         # Create invoice sheets for any newly closed deals
         for customer in self._market.customers:
             if customer.stage == "closed_won" and customer.previous_stage != "closed_won":
@@ -154,6 +150,11 @@ class OfficeOsEnvironment(Environment):
             done=done,
             action_result=action_result,
         )
+
+    def sync_sheets(self):
+        """Sync current state to Google Sheets (call at end of day)."""
+        self._sheets.update_dashboard(self._market)
+        self._sheets.update_customers(self._market)
 
     @property
     def state(self) -> State:

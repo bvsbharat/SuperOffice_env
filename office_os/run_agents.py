@@ -131,6 +131,9 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
             logger.info(f"  Budget: ${kpis['budget_remaining']:,.0f}")
             logger.info(f"{'='*60}\n")
 
+            # Sync to Google Sheets once per day
+            env.sync_sheets()
+
     # Final summary
     logger.info("\n" + "=" * 60)
     logger.info("SIMULATION COMPLETE")
