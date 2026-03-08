@@ -285,15 +285,24 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
 
 def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
                   speed: float = 0.5, train_every: int = EPISODE_DAYS,
-                  northflank_endpoint: str = "", scenario: str = "baseline"):
+                  northflank_endpoint: str = "", scenario: str = "baseline",
+                  use_claude: bool = False, provider: str = "bedrock",
+                  aws_region: str = "us-east-1", claude_model: str = "claude-sonnet-4-20250514"):
     """Run the simulation with a live terminal dashboard and remote training."""
     env = OfficeOsEnvironment(scenario=scenario)
     obs = env.reset()
 
-    agents = {role: LLMAgent(role=role) for role in AGENT_ROLES}
+    if use_claude:
+        agents = {
+            role: LLMAgent(role=role, model=claude_model, provider=provider, aws_region=aws_region)
+            for role in AGENT_ROLES
+        }
+        logger.info(f"All agents using Claude via {provider} ({claude_model})")
+    else:
+        agents = {role: LLMAgent(role=role) for role in AGENT_ROLES}
 
-    # Point all agents at the Northflank vLLM endpoint
-    if northflank_endpoint:
+    # Point all agents at the Northflank vLLM endpoint (only in vLLM mode)
+    if not use_claude and northflank_endpoint:
         vllm_base_url = northflank_endpoint.rstrip("/") + "/v1"
         for role, agent in agents.items():
             agent.set_vllm_endpoint(
@@ -547,6 +556,15 @@ def main():
     parser.add_argument("--scenario", type=str, default="baseline",
                         choices=["baseline", "competitor", "series_a", "churn", "viral"],
                         help="Simulation scenario (default: baseline)")
+    parser.add_argument("--use-claude", action="store_true",
+                        help="Use Claude instead of vLLM")
+    parser.add_argument("--provider", type=str, default="bedrock",
+                        choices=["anthropic", "bedrock"],
+                        help="Claude provider (default: bedrock)")
+    parser.add_argument("--aws-region", type=str, default="us-east-1",
+                        help="AWS region for Bedrock (default: us-east-1)")
+    parser.add_argument("--claude-model", type=str, default="claude-sonnet-4-20250514",
+                        help="Claude model (default: claude-sonnet-4-20250514)")
 
     args = parser.parse_args()
 
@@ -556,13 +574,15 @@ def main():
     if nf_train_endpoint:
         os.environ["NORTHFLANK_TRAIN_ENDPOINT"] = nf_train_endpoint
 
-    if not nf_endpoint:
-        console.print("[red]Northflank endpoint required. Set NORTHFLANK_INFERENCE_ENDPOINT in .env or use --northflank-endpoint[/]")
+    if not args.use_claude and not nf_endpoint:
+        console.print("[red]Either --use-claude or --northflank-endpoint required[/]")
         sys.exit(1)
 
-    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.model} | Days: {args.days} | Scenario: {args.scenario}")
-    console.print(f"[dim]Endpoint: {nf_endpoint}[/]")
-    console.print(f"[dim]Training every {args.train_every} days via {nf_train_endpoint or nf_endpoint}[/]")
+    mode = f"Claude ({args.provider})" if args.use_claude else f"vLLM ({args.model})"
+    console.print(f"[bold]Office OS Dashboard[/] | Mode: {mode} | Days: {args.days} | Scenario: {args.scenario}")
+    if nf_endpoint:
+        console.print(f"[dim]Endpoint: {nf_endpoint}[/]")
+    console.print(f"[dim]Training every {args.train_every} days[/]")
     console.print("[dim]Starting simulation...[/]\n")
     time.sleep(1)
 
@@ -573,6 +593,10 @@ def main():
         train_every=args.train_every,
         northflank_endpoint=nf_endpoint,
         scenario=args.scenario,
+        use_claude=args.use_claude,
+        provider=args.provider,
+        aws_region=args.aws_region,
+        claude_model=args.claude_model,
     )
 
 

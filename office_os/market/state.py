@@ -35,6 +35,8 @@ class Customer:
     last_contacted_day: int = 0
     previous_stage: str = ""
     contract_tier: str = ""  # "monthly", "6_month", "annual" -- set on close
+    negotiation_attempts: int = 0  # Track close attempts from negotiation
+    closed_day: int = 0  # Day the deal was closed (for MRR tracking)
 
     def advance_stage(self) -> bool:
         """Move customer to the next pipeline stage. Returns True if moved."""
@@ -412,6 +414,17 @@ class MarketState:
         )
         return customer
 
+    def _accrue_mrr(self):
+        """Accrue daily recurring revenue from closed_won customers."""
+        from .config import CONTRACT_TIERS
+        for c in self.customers:
+            if c.stage == "closed_won" and c.contract_tier:
+                tier = CONTRACT_TIERS.get(c.contract_tier, {})
+                # Daily revenue = annual budget / 365
+                daily_rev = c.budget / 365.0
+                self.revenue += daily_rev
+                self.total_revenue += daily_rev
+
     def decay_stale_leads(self) -> list[Customer]:
         """Mark leads as lost if not contacted within decay period."""
         cfg = Config()
@@ -448,6 +461,9 @@ class MarketState:
                 cfg = Config()
                 self.budget_remaining += cfg.monthly_budget_refresh + (self.revenue * 0.1)
                 self.revenue = 0.0  # Reset monthly revenue
+
+            # Accrue daily MRR from closed_won customers
+            self._accrue_mrr()
 
             # Decay stale leads
             self.decay_stale_leads()

@@ -190,6 +190,16 @@ def main():
                         help="Scenarios to cycle through (default: all 5)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Collect trajectories but skip training")
+    parser.add_argument("--use-claude", action="store_true",
+                        help="Use Claude for data collection (distillation mode). "
+                             "Collects high-quality trajectories to train Qwen on.")
+    parser.add_argument("--provider", type=str, default="bedrock",
+                        choices=["anthropic", "bedrock"],
+                        help="Claude provider: 'anthropic' (direct API) or 'bedrock' (AWS)")
+    parser.add_argument("--aws-region", type=str, default="us-east-1",
+                        help="AWS region for Bedrock (default: us-east-1)")
+    parser.add_argument("--claude-model", type=str, default="claude-sonnet-4-20250514",
+                        help="Claude model for distillation (default: claude-sonnet-4-20250514)")
     parser.add_argument("--output-dir", type=str, default="training_data",
                         help="Directory for trajectory and summary output")
     args = parser.parse_args()
@@ -200,32 +210,47 @@ def main():
     if nf_train_endpoint:
         os.environ["NORTHFLANK_TRAIN_ENDPOINT"] = nf_train_endpoint
 
-    if not nf_endpoint:
-        logger.error("Northflank endpoint required. Set NORTHFLANK_INFERENCE_ENDPOINT or --northflank-endpoint")
+    if not args.use_claude and not nf_endpoint:
+        logger.error("Either --use-claude or --northflank-endpoint required")
         sys.exit(1)
 
     scenarios = args.scenarios or SCENARIOS
     os.makedirs(args.output_dir, exist_ok=True)
 
+    mode = "Claude (distillation)" if args.use_claude else f"vLLM ({args.model})"
     logger.info("=" * 60)
     logger.info("Office OS Training Loop")
     logger.info(f"  Episodes: {args.episodes}")
     logger.info(f"  Days per episode: {args.days}")
-    logger.info(f"  Model: {args.model}")
+    logger.info(f"  Mode: {mode}")
     logger.info(f"  Scenarios: {scenarios}")
-    logger.info(f"  Endpoint: {nf_endpoint}")
+    logger.info(f"  Endpoint: {nf_endpoint or 'N/A (Claude mode)'}")
     logger.info(f"  Dry run: {args.dry_run}")
     logger.info("=" * 60)
 
     # Create agents — they persist across episodes so LoRA upgrades carry over
-    agents = {role: LLMAgent(role=role) for role in AGENT_ROLES}
-    vllm_base_url = nf_endpoint.rstrip("/") + "/v1"
-    for role, agent in agents.items():
-        agent.set_vllm_endpoint(
-            base_url=vllm_base_url,
-            api_key="dummy",
-            model_name=args.model,
+    agents = {
+        role: LLMAgent(
+            role=role,
+            model=args.claude_model if args.use_claude else "claude-sonnet-4-20250514",
+            provider=args.provider if args.use_claude else "anthropic",
+            aws_region=args.aws_region,
         )
+        for role in AGENT_ROLES
+    }
+
+    if not args.use_claude and nf_endpoint:
+        # Point agents at vLLM for inference
+        vllm_base_url = nf_endpoint.rstrip("/") + "/v1"
+        for role, agent in agents.items():
+            agent.set_vllm_endpoint(
+                base_url=vllm_base_url,
+                api_key="dummy",
+                model_name=args.model,
+            )
+    else:
+        # Claude mode: agents use Claude API (direct or Bedrock)
+        logger.info(f"Using Claude via {args.provider} for data collection (distillation mode)")
 
     # Collector persists across episodes to accumulate all trajectories
     # but we drain after each episode for training
@@ -257,8 +282,12 @@ def main():
         traj_path = os.path.join(args.output_dir, f"trajectories_ep{ep}_{scenario}.jsonl")
         collector.save_jsonl(traj_path)
 
-        # Train after episode (unless dry run)
-        if not args.dry_run:
+        # Train after episode (unless dry run or Claude-only collection)
+        if args.use_claude and not nf_endpoint:
+            # Claude distillation: collect only, no training endpoint available
+            logger.info(f"[DISTILL] Episode {ep} collected {collector.pending_count()} Claude trajectories")
+            collector.drain_batch()
+        elif not args.dry_run:
             logger.info(f"\n{'=' * 40}")
             logger.info(f"TRAINING after Episode {ep} ({scenario})")
             logger.info(f"Pending trajectories: {collector.pending_count()}")
@@ -270,15 +299,16 @@ def main():
                 role = tr["role"]
                 if status == "trained":
                     logger.info(f"  {role}: trained (step={tr.get('step', '?')}, trajs={tr.get('trajectories_used', '?')})")
-                    # Switch agent to trained LoRA model
-                    endpoint = trainer.get_inference_endpoint(role)
-                    if endpoint:
-                        agents[role].set_vllm_endpoint(
-                            base_url=endpoint["base_url"].rstrip("/") + "/v1",
-                            api_key="dummy",
-                            model_name=endpoint["model_name"],
-                        )
-                        logger.info(f"    >> {role} switched to LoRA: {endpoint['model_name']}")
+                    # Switch agent to trained LoRA model (only in vLLM mode)
+                    if not args.use_claude:
+                        endpoint = trainer.get_inference_endpoint(role)
+                        if endpoint:
+                            agents[role].set_vllm_endpoint(
+                                base_url=endpoint["base_url"].rstrip("/") + "/v1",
+                                api_key="dummy",
+                                model_name=endpoint["model_name"],
+                            )
+                            logger.info(f"    >> {role} switched to LoRA: {endpoint['model_name']}")
                 elif tr.get("reason"):
                     logger.info(f"  {role}: {status} ({tr['reason']})")
                 else:
