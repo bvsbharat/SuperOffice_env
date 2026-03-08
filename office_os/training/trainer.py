@@ -56,7 +56,7 @@ class ARTTrainer:
         collector: TrajectoryCollector,
         base_model: str = "Qwen/Qwen2.5-3B-Instruct",
         train_every_days: int = 3,
-        min_trajectories_per_role: int = 10,
+        min_trajectories_per_role: int = 3,
         backend_type: str = "local",  # "local" (H100), "serverless" (W&B), "remote", "disabled"
         northflank_endpoint: str | None = None,
         northflank_api_key: str | None = None,
@@ -90,7 +90,11 @@ class ARTTrainer:
             return False
         if current_day - self._last_train_day < self.train_every_days:
             return False
-        return self.collector.pending_count() >= self.min_trajectories
+        pending = self.collector.pending_count()
+        ready = pending >= self.min_trajectories
+        if ready:
+            logger.info(f"Training check: day={current_day}, pending={pending}, threshold={self.min_trajectories} -> TRAIN")
+        return ready
 
     async def initialize(self):
         """Initialize the ART backend and register models for each role."""
@@ -151,8 +155,9 @@ class ARTTrainer:
 
         batch = self.collector.drain_batch(role)
         turns = batch.get(role, [])
-        if len(turns) < self.min_trajectories:
-            return {"status": "skipped", "role": role, "reason": f"only {len(turns)} turns (need {self.min_trajectories})"}
+        logger.info(f"train_role({role}): {len(turns)} pending turns (threshold={self.min_trajectories})")
+        if len(turns) < 1:  # Train with whatever we have (remote worker handles min check)
+            return {"status": "skipped", "role": role, "reason": f"no pending turns"}
 
         # Remote training mode: send to Northflank API
         if self.backend_type == "remote":
