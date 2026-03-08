@@ -86,8 +86,8 @@ export class OfficeScene extends Phaser.Scene {
     this.load.image('interiors_4', '/game/tilesets/interiors_pt4.png')
     this.load.image('blocks', '/game/tilesets/blocks_1.png')
 
-    // Tilemap JSON
-    this.load.tilemapTiledJSON('office_map', '/game/office_map.json')
+    // Tilemap JSON (cache-busted to ensure latest edits are loaded)
+    this.load.tilemapTiledJSON('office_map', `/game/office_map.json?v=${Date.now()}`)
 
     // Character sprites
     for (const aid of AGENT_ORDER) {

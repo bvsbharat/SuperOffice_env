@@ -125,7 +125,7 @@ export function FourDView() {
   const phaseColor = PHASE_COLORS[state.phase] || '#6b7280'
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 relative" style={{ background: '#0f172a' }}>
+    <div className="flex-1 flex flex-col min-h-0 relative" style={{ background: 'var(--color-surface)' }}>
       {/* Confetti on episode completion */}
       <ConfettiOverlay active={showConfetti} />
 
@@ -158,9 +158,9 @@ export function FourDView() {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="absolute top-2 right-2 z-20 text-[10px] font-bold px-2 py-1 rounded transition-colors"
             style={{
-              background: 'rgba(15,23,42,0.8)',
-              border: '1px solid rgba(99,102,241,0.4)',
-              color: '#c7d2fe',
+              background: 'var(--color-card-bg)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-secondary)',
               backdropFilter: 'blur(8px)',
             }}
           >
@@ -178,18 +178,18 @@ export function FourDView() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="shrink-0 flex flex-col overflow-hidden"
               style={{
-                background: 'rgba(15,23,42,0.95)',
-                backdropFilter: 'blur(12px)',
-                borderLeft: '1px solid rgba(99,102,241,0.3)',
+                background: 'var(--color-surface)',
+                backdropFilter: 'blur(16px)',
+                borderLeft: '1px solid var(--color-border)',
               }}
             >
               {/* Tabs */}
-              <div className="flex shrink-0" style={{ borderBottom: '1px solid rgba(99,102,241,0.2)' }}>
+              <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
                 <button
                   onClick={() => setSidebarTab('agents')}
                   className="flex-1 text-[10px] px-3 py-2 font-semibold transition-colors"
                   style={{
-                    color: sidebarTab === 'agents' ? '#e2e8f0' : '#64748b',
+                    color: sidebarTab === 'agents' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
                     borderBottom: sidebarTab === 'agents' ? '2px solid #6366f1' : '2px solid transparent',
                   }}
                 >
@@ -199,7 +199,7 @@ export function FourDView() {
                   onClick={() => setSidebarTab('dashboard')}
                   className="flex-1 text-[10px] px-3 py-2 font-semibold transition-colors"
                   style={{
-                    color: sidebarTab === 'dashboard' ? '#e2e8f0' : '#64748b',
+                    color: sidebarTab === 'dashboard' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
                     borderBottom: sidebarTab === 'dashboard' ? '2px solid #6366f1' : '2px solid transparent',
                   }}
                 >
@@ -223,15 +223,20 @@ export function FourDView() {
         </AnimatePresence>
       </div>
 
-      {/* Timeline Scrubber */}
-      <TimelineScrubber />
+      {/* Timeline Scrubber — above sidebars */}
+      <div className="relative" style={{ zIndex: 30 }}>
+        <TimelineScrubber />
+      </div>
 
-      {/* Info Bar + Episode Controls */}
+      {/* Info Bar + Episode Controls — above sidebars */}
       <div
-        className="shrink-0 flex items-center"
+        className="shrink-0 flex items-center relative"
         style={{
-          background: 'rgba(15,23,42,0.95)',
-          borderTop: '1px solid rgba(51,65,85,0.6)',
+          background: 'var(--color-panel)',
+          borderTop: '1px solid var(--color-border)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          zIndex: 30,
         }}
       >
         {/* Info */}
@@ -246,38 +251,38 @@ export function FourDView() {
 
           {/* Active agent */}
           {state.activeAgent && (
-            <span className="text-[10px] font-semibold shrink-0" style={{ color: '#c7d2fe' }}>
+            <span className="text-[10px] font-semibold shrink-0" style={{ color: 'var(--color-text-primary)' }}>
               {state.agents[state.activeAgent]?.emoji} {state.agents[state.activeAgent]?.name}
             </span>
           )}
 
           {/* Action */}
           {state.action && (
-            <span className="text-[10px] truncate" style={{ color: '#94a3b8' }}>
+            <span className="text-[10px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
               {state.action}{state.target ? ` -> ${state.target}` : ''}
             </span>
           )}
 
           {/* Reasoning */}
           {state.reasoning && (
-            <span className="text-[10px] truncate italic" style={{ color: '#64748b' }}>
+            <span className="text-[10px] truncate italic" style={{ color: 'var(--color-text-muted)' }}>
               {state.reasoning}
             </span>
           )}
 
           {/* Rewards */}
           <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span className="text-[9px] font-mono" style={{ color: state.globalReward >= 0 ? '#22c55e' : '#ef4444' }}>
+            <span className="text-[9px] font-mono" style={{ color: state.globalReward >= 0 ? '#a6e22e' : '#f92672' }}>
               R: {state.globalReward.toFixed(2)}
             </span>
-            <span className="text-[9px] font-mono" style={{ color: '#94a3b8' }}>
+            <span className="text-[9px] font-mono" style={{ color: 'var(--color-text-muted)' }}>
               Day {state.day}
             </span>
           </div>
         </div>
 
         {/* Divider */}
-        <div className="w-px h-8" style={{ background: 'rgba(51,65,85,0.6)' }} />
+        <div className="w-px h-8" style={{ background: 'var(--color-border)' }} />
 
         {/* Episode Controls */}
         <div className="shrink-0" style={{ width: 420 }}>

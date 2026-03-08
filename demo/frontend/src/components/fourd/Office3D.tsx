@@ -454,7 +454,7 @@ function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents
       {/* Speech bubble only (no name badge — name is on desk nameplate) */}
       {showBubble && bubbleText && (
         <Html
-          position={[0, 0.85, 0]}
+          position={[0, 1.18, 0]}
           center
           zIndexRange={[100, 0]}
           style={{ pointerEvents: 'none' }}

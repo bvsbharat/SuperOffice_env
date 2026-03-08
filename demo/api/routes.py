@@ -131,6 +131,136 @@ async def reconfigure(req: ReconfigureRequest):
     return {"provider": req.provider, "model": req.model, "status": "reconfigured"}
 
 
+_RUBRIC_TEXT = """
+MULTI-AGENT GTM SIMULATION — REWARD FUNCTION DESIGN
+7 agents: CEO, Dev, Marketing, Sales, Content, HR, Customer
+Episode: 10 days, 14 turns/day (one agent acts per turn, sequential)
+
+PIPELINE STAGE TRANSITION REWARDS (points per agent when a customer moves to that stage):
+  visitor:     content +0.5
+  lead:        content +1.0, marketing +1.5
+  qualified:   sales +1.0, hr +0.3
+  demo:        sales +1.5, dev +0.5
+  proposal:    sales +2.0
+  closed_won:  sales +10.0, content +2.0, marketing +3.0, dev +2.0, ceo +5.0, hr +1.0, customer +2.0
+  closed_lost: sales -3.0, marketing -1.0, ceo -2.0
+  churned:     dev -5.0, sales -3.0, content -1.0, marketing -1.0, ceo -3.0, customer -5.0
+CONTRACT TIER MULTIPLIERS on closed_won: monthly ×1.0, 6-month ×2.0, annual ×3.0
+
+DIRECT ACTION REWARDS (on successful execution):
+  dev:      SHIP_RELEASE +3.0, BUILD_FEATURE +0.5
+  content:  publish any piece +0.5
+  ceo:      SET_OKRS +1.0, SEND_DIRECTIVE +0.3
+  hr:       RESOLVE_BLOCKER +1.5, PLAN_SPRINT +0.5
+  customer: REFER_LEAD +2.0, RENEW_CONTRACT +3.0, EVALUATE_PRODUCT +0.3, GIVE_FEEDBACK +0.5
+
+KPI DELTA REWARDS (per-step KPI improvement):
+  website_traffic +1000: marketing/content +1.0, others +0.2
+  revenue +5000:         sales +2.0 (×2 multiplier), others +0.5
+  pipeline_value +10000: sales +1.0
+
+COLLABORATION BONUSES (emergent cooperative reward):
+  content writes about a shipped feature:           +1.0 (collab with dev)
+  sales demos a lead with prior content touchpoints: +0.5 (collab with content)
+  dev builds feature from customer feedback:         +1.0 (collab with sales/customer)
+  marketing runs campaign with published content:    +0.5 (collab with content)
+
+PENALTIES:
+  any agent: failed action -1.0
+  sales:     stale lead (>4 days no contact) -0.5 per lead
+  marketing: budget below $1,000 -0.5
+  dev:       vaporware violation (content references unshipped feature) -5.0
+
+GLOBAL REWARD = sum of all per-agent rewards across the episode
+"""
+
+
+@router.post("/api/validate-rubric")
+async def validate_rubric():
+    """Use Claude Opus 4.6 to validate the reward rubric against RL best practices."""
+    import sys as _sys
+    import anthropic as _anthropic
+    import json as _json
+
+    _main = _sys.modules.get("__main__")
+    bc = getattr(_main, "bridge_config", None) or {}
+    aws_region = bc.get("aws_region", "us-east-1")
+
+    # Split into system + user exactly as llm_agent._call_structured does
+    system_prompt = (
+        "You are a reinforcement learning expert specialising in LLM agent training, "
+        "multi-agent systems, and reward function design. "
+        "When asked to evaluate a reward function, return ONLY a valid JSON object — "
+        "no markdown fences, no explanation outside the JSON."
+    )
+    user_msg = (
+        "Evaluate the reward function below against established RL best practices:\n"
+        "- PPO / GRPO: policy stability, KL divergence, trust regions\n"
+        "- RLHF: reward shaping, alignment, calibration, reward hacking\n"
+        "- Multi-agent RL: credit assignment, cooperative incentives, emergent behaviour\n"
+        "- Practical RL: dense vs sparse rewards, reward scaling, exploration\n\n"
+        + _RUBRIC_TEXT +
+        "\nReturn this JSON structure (no other text):\n"
+        "{\n"
+        '  "overall_score": <integer 0-100>,\n'
+        '  "grade": "<A|B|C|D|F>",\n'
+        '  "summary": "<2-3 sentence overall assessment>",\n'
+        '  "strengths": [\n'
+        '    {"title": "...", "detail": "...", "principle": "<RL principle>"}\n'
+        "  ],\n"
+        '  "gaps": [\n'
+        '    {"title": "...", "detail": "...", "severity": "<high|medium|low>", "principle": "..."}\n'
+        "  ],\n"
+        '  "recommendations": [\n'
+        '    {"title": "...", "detail": "...", "priority": "<high|medium|low>", "impact": "..."}\n'
+        "  ]\n"
+        "}"
+    )
+
+    try:
+        import traceback as _tb
+        import os as _os
+
+        # Build kwargs for AnthropicBedrock — mirror the same pattern as llm_agent.py
+        bedrock_kwargs: dict = {"aws_region": aws_region}
+        if _os.environ.get("AWS_ACCESS_KEY_ID"):
+            bedrock_kwargs["aws_access_key"] = _os.environ["AWS_ACCESS_KEY_ID"]
+        if _os.environ.get("AWS_SECRET_ACCESS_KEY"):
+            bedrock_kwargs["aws_secret_key"] = _os.environ["AWS_SECRET_ACCESS_KEY"]
+        if _os.environ.get("AWS_SESSION_TOKEN"):
+            bedrock_kwargs["aws_session_token"] = _os.environ["AWS_SESSION_TOKEN"]
+
+        # Validation uses Opus 4.6 for expert-quality RL analysis
+        validation_model = "us.anthropic.claude-opus-4-6-v1[1m]"  # user-confirmed ID
+        logger.info("validate-rubric: using model %s", validation_model)
+
+        client = _anthropic.AnthropicBedrock(**bedrock_kwargs)
+
+        def _call():
+            # Same pattern as llm_agent._call_structured: system + user message
+            resp = client.messages.create(
+                model=validation_model,
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            return resp.content[0].text.strip()
+
+        loop = asyncio.get_running_loop()
+        text = await loop.run_in_executor(None, _call)
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start < 0 or end <= start:
+            raise ValueError(f"No JSON in response. Raw text: {text[:300]}")
+        result = _json.loads(text[start:end])
+        result["validated_by"] = validation_model
+        return result
+    except Exception as e:
+        detail = f"{type(e).__name__}: {e}"
+        logger.error("validate-rubric failed: %s\n%s", detail, _tb.format_exc())
+        raise HTTPException(status_code=500, detail=detail)
+
+
 @router.get("/api/scenarios")
 async def list_scenarios():
     # Real env has no discrete scenarios; return empty for compatibility

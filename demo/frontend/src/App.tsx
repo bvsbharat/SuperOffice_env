@@ -6,9 +6,9 @@ import { OfficeMap } from './components/OfficeMap'
 import { AgentCard } from './components/AgentCard'
 import { MarketDashboard } from './components/MarketDashboard'
 import { ConversationLog } from './components/ConversationLog'
+import { RewardPanel } from './components/RewardPanel'
 import { TimelineView } from './components/TimelineView'
 import { EpisodeControls } from './components/EpisodeControls'
-import { RewardPanel } from './components/RewardPanel'
 import { ViewToggle } from './components/ViewToggle'
 import { ModelSelector } from './components/ModelSelector'
 import { PlaygroundView } from './components/PlaygroundView'
@@ -59,7 +59,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden select-none" style={{ background: 'var(--color-surface)' }}>
       {/* Header */}
-      <header className="shrink-0 h-10 flex items-center px-4 gap-4" style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <header className="shrink-0 h-10 flex items-center px-4 gap-4" style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', backdropFilter: 'blur(18px) saturate(160%)', WebkitBackdropFilter: 'blur(18px) saturate(160%)' }}>
         <div className="flex items-center gap-2">
           <span className="text-base">{'\uD83C\uDFE2'}</span>
           <span className="text-xs font-bold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>SUPEROFFICE GTM</span>
@@ -69,10 +69,6 @@ export default function App() {
         <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
 
         <ViewToggle />
-
-        <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
-
-        <ModelSelector />
 
         {/* Theme toggle */}
         <button
@@ -133,162 +129,141 @@ export default function App() {
 
       <BenchmarkPanel />
 
-      {viewMode === 'playground' ? (
-        <PlaygroundView />
-      ) : viewMode === '3d' ? (
-        <ThreeDView />
-      ) : viewMode === '4d' ? (
-        <FourDView />
-      ) : (
-        <>
-          {/* Main Content */}
-          <div className="flex-1 min-h-0 relative">
+      {/* ── Shared main area: all views + overlaid sidebars ── */}
+      <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
+
+        {/* View content */}
+        {viewMode === 'playground' ? (
+          <PlaygroundView />
+        ) : viewMode === '3d' ? (
+          <ThreeDView />
+        ) : viewMode === '4d' ? (
+          <FourDView />
+        ) : (
+          <>
             {/* Office Map */}
-            <div
-              className="absolute inset-0 flex flex-col"
-              style={{ background: 'var(--color-panel)' }}
-            >
-              <div className="flex-1 min-h-0">
-                <OfficeMap />
+            <div className="flex-1 min-h-0" style={{ background: 'var(--color-panel)' }}>
+              <OfficeMap />
+            </div>
+            {/* Controls Bar */}
+            <div className="shrink-0 h-12 flex" style={{ borderTop: '1px solid var(--color-border)', background: '#000000', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
+              <div className="flex-1" style={{ borderRight: '1px solid var(--color-border)' }}>
+                <TimelineView />
+              </div>
+              <div className="flex-1">
+                <EpisodeControls />
               </div>
             </div>
+          </>
+        )}
 
-            {/* Left sidebar toggle */}
-            <button
-              onClick={() => togglePanel('bottomPanel')}
-              className="absolute top-2 z-20 flex items-center justify-center transition-colors"
-              style={{
-                left: panelVisibility.bottomPanel ? 340 : 0,
-                width: 20,
-                height: 36,
-                background: 'var(--color-panel)',
-                border: '1px solid var(--color-border)',
-                borderLeft: panelVisibility.bottomPanel ? 'none' : '1px solid var(--color-border)',
-                borderRadius: '0 4px 4px 0',
-                color: 'var(--color-text-faint)',
-                fontSize: 10,
-                cursor: 'pointer',
-                transition: 'left 0.3s ease-in-out',
-              }}
+        {/* ── Left sidebar toggle ── */}
+        <button
+          onClick={() => togglePanel('bottomPanel')}
+          className="absolute top-2 z-30 flex items-center justify-center"
+          style={{
+            left: panelVisibility.bottomPanel ? 340 : 0,
+            width: 20,
+            height: 36,
+            background: '#000000',
+            border: '1px solid var(--color-border)',
+            borderLeft: panelVisibility.bottomPanel ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '0 4px 4px 0',
+            color: 'var(--color-text-faint)',
+            fontSize: 10,
+            cursor: 'pointer',
+            transition: 'left 0.3s ease-in-out',
+          }}
+        >
+          {panelVisibility.bottomPanel ? '\u2039' : '\u203A'}
+        </button>
+
+        {/* ── Left sidebar — Conversation Log ── */}
+        <AnimatePresence initial={false}>
+          {panelVisibility.bottomPanel && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 340, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="absolute left-0 top-0 z-20 flex flex-col overflow-hidden"
+              style={{ bottom: 48, borderRight: '1px solid var(--color-border)', background: '#000000' }}
             >
-              {panelVisibility.bottomPanel ? '\u2039' : '\u203A'}
-            </button>
+              <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: '#000000' }}>
+                <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ConversationLog />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            {/* Left sidebar — Conversation Log */}
-            <AnimatePresence initial={false}>
-              {panelVisibility.bottomPanel && (
-                <motion.div
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 340, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="absolute left-0 top-0 bottom-0 z-10 flex flex-col overflow-hidden frosted-glass"
-                  style={{ borderRight: '1px solid var(--color-border)' }}
-                >
-                  <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
-                    <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <ConversationLog />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+        {/* ── Right sidebar toggle ── */}
+        <button
+          onClick={() => togglePanel('rightSidebar')}
+          className="absolute top-2 z-30 flex items-center justify-center"
+          style={{
+            right: panelVisibility.rightSidebar ? 384 : 0,
+            width: 20,
+            height: 36,
+            background: '#000000',
+            border: '1px solid var(--color-border)',
+            borderRight: panelVisibility.rightSidebar ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '4px 0 0 4px',
+            color: 'var(--color-text-faint)',
+            fontSize: 10,
+            cursor: 'pointer',
+            transition: 'right 0.3s ease-in-out',
+          }}
+        >
+          {panelVisibility.rightSidebar ? '\u203A' : '\u2039'}
+        </button>
 
-            {/* Right sidebar toggle */}
-            <button
-              onClick={() => togglePanel('rightSidebar')}
-              className="absolute top-2 z-20 flex items-center justify-center transition-colors"
-              style={{
-                right: panelVisibility.rightSidebar ? 384 : 0,
-                width: 20,
-                height: 36,
-                background: 'var(--color-panel)',
-                border: '1px solid var(--color-border)',
-                borderRight: panelVisibility.rightSidebar ? 'none' : '1px solid var(--color-border)',
-                borderRadius: '4px 0 0 4px',
-                color: 'var(--color-text-faint)',
-                fontSize: 10,
-                cursor: 'pointer',
-                transition: 'right 0.3s ease-in-out',
-              }}
+        {/* ── Right sidebar — Dashboard / Agents / Rewards ── */}
+        <AnimatePresence initial={false}>
+          {panelVisibility.rightSidebar && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 384, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="absolute right-0 top-0 z-20 flex flex-col overflow-hidden"
+              style={{ bottom: 48, borderLeft: '1px solid var(--color-border)', background: '#000000' }}
             >
-              {panelVisibility.rightSidebar ? '\u203A' : '\u2039'}
-            </button>
-
-            {/* Right sidebar — Dashboard / Agents / Rewards */}
-            <AnimatePresence initial={false}>
-              {panelVisibility.rightSidebar && (
-                <motion.div
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 380, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="absolute right-0 top-0 bottom-0 z-10 flex flex-col overflow-hidden frosted-glass"
-                  style={{ borderLeft: '1px solid var(--color-border)' }}
-                >
-                  <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
-                    <button
-                      onClick={() => setRightTab('dashboard')}
-                      className="text-[10px] px-4 py-2 font-semibold transition-colors"
-                      style={{
-                        color: rightTab === 'dashboard' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                        borderBottom: rightTab === 'dashboard' ? '2px solid #6366f1' : '2px solid transparent',
-                      }}
-                    >
-                      DASHBOARD
-                    </button>
-                    <button
-                      onClick={() => setRightTab('agents')}
-                      className="text-[10px] px-4 py-2 font-semibold transition-colors"
-                      style={{
-                        color: rightTab === 'agents' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                        borderBottom: rightTab === 'agents' ? '2px solid #6366f1' : '2px solid transparent',
-                      }}
-                    >
-                      AGENTS
-                    </button>
-                    <button
-                      onClick={() => setRightTab('rewards')}
-                      className="text-[10px] px-4 py-2 font-semibold transition-colors"
-                      style={{
-                        color: rightTab === 'rewards' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                        borderBottom: rightTab === 'rewards' ? '2px solid #6366f1' : '2px solid transparent',
-                      }}
-                    >
-                      REWARDS
-                    </button>
+              <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: '#000000' }}>
+                {(['dashboard', 'agents', 'rewards'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setRightTab(tab)}
+                    className="text-[10px] px-4 py-2 font-semibold transition-colors"
+                    style={{
+                      color: rightTab === tab ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
+                      borderBottom: rightTab === tab ? '2px solid #6366f1' : '2px solid transparent',
+                    }}
+                  >
+                    {tab.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                {rightTab === 'dashboard' ? (
+                  <MarketDashboard />
+                ) : rightTab === 'agents' ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {AGENT_ORDER.map(aid => (
+                      <AgentCard key={aid} agent={agents[aid as AgentId]} />
+                    ))}
                   </div>
+                ) : (
+                  <RewardPanel />
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                  <div className="flex-1 min-h-0 overflow-y-auto p-2">
-                    {rightTab === 'dashboard' ? (
-                      <MarketDashboard />
-                    ) : rightTab === 'agents' ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {AGENT_ORDER.map(aid => (
-                          <AgentCard key={aid} agent={agents[aid as AgentId]} />
-                        ))}
-                      </div>
-                    ) : (
-                      <RewardPanel />
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Controls Bar */}
-          <div className="shrink-0 h-12 flex" style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
-            <div className="flex-1" style={{ borderRight: '1px solid var(--color-border)' }}>
-              <TimelineView />
-            </div>
-            <div className="flex-1">
-              <EpisodeControls />
-            </div>
-          </div>
-        </>
-      )}
+      </div>
     </div>
   )
 }

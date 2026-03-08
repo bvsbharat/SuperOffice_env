@@ -216,8 +216,44 @@ class LLMAgent:
         text = response.choices[0].message.content or ""
         return self._parse_text_response(text)
 
+    def _is_claude_model(self) -> bool:
+        """Return True if the current model is an Anthropic Claude model."""
+        return "anthropic" in self.model.lower()
+
+    def _call_bedrock_converse(self, user_msg: str) -> AgentAction:
+        """Call non-Claude Bedrock models (Mistral, Qwen, etc.) via boto3 Converse API."""
+        try:
+            import boto3
+        except ImportError:
+            raise ImportError("boto3 is required for non-Claude Bedrock models. Install with: pip install boto3")
+
+        actions_str = ", ".join(self._allowed_actions)
+        system_text = (
+            self.system_prompt +
+            f"\n\nRespond with ONLY a JSON object — no explanation, no markdown fences.\n"
+            f"action_type MUST be exactly one of: {actions_str}\n"
+            f'Format: {{"action_type": "...", "target": "...", "parameters": {{}}, "reasoning": "...", "message": null}}'
+        )
+
+        bedrock = boto3.client("bedrock-runtime", region_name=self.aws_region)
+        response = bedrock.converse(
+            modelId=self.model,
+            system=[{"text": system_text}],
+            messages=[{"role": "user", "content": [{"text": user_msg}]}],
+            inferenceConfig={"maxTokens": 512, "temperature": 0.7},
+        )
+        text = response["output"]["message"]["content"][0]["text"]
+        return self._parse_text_response(text)
+
     def _call_structured(self, user_msg: str) -> AgentAction:
-        """Call Claude and parse response into a validated AgentAction."""
+        """Call the model and parse response into a validated AgentAction.
+
+        Routes non-Claude models to Bedrock Converse API (boto3) since
+        tool_choice is an Anthropic-only feature.
+        """
+        if not self._is_claude_model():
+            return self._call_bedrock_converse(user_msg)
+
         tool_schema = AgentAction.model_json_schema()
         properties = tool_schema.get("properties", {})
 
@@ -412,12 +448,14 @@ class LLMAgent:
                 parts.append(f"  - {r}")
             parts.append("")
 
-        available = role_data.get("available_actions", [])
-        if available:
-            parts.append(f"## ALLOWED ACTIONS: {', '.join(available)}")
-            parts.append("")
+        # Always show the definitive allowed-action list (use self._allowed_actions
+        # as the ground truth; role_data may not always carry it).
+        allowed = self._allowed_actions
+        parts.append(f"## ALLOWED ACTIONS (you MUST pick one of these exactly):")
+        parts.append(", ".join(allowed))
+        parts.append("")
 
-        parts.append("Pick the HIGHEST IMPACT action. Use the submit_action tool to respond.")
+        parts.append("Pick the HIGHEST IMPACT action from the list above. Use the submit_action tool to respond.")
         return "\n".join(parts)
 
     def _summarize_observation(self, obs: dict) -> str:

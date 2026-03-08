@@ -45,6 +45,7 @@ export interface Message {
   to_agent: string
   text: string
   msg_type: MsgType
+  reward?: number
 }
 
 export interface SimEvent {

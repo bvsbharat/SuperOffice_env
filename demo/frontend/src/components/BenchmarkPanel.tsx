@@ -1,22 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import type { BenchmarkRun } from '../store/useStore'
 
-// Top 10 Bedrock models (latest, highest-tier per provider)
+// Real AWS Bedrock cross-region inference profile IDs.
+// Claude 4.x models use us.anthropic.claude-{model}[1m] format.
+// Claude 3.x models use us.anthropic.claude-{model}-{date}-v1:0 format.
 const KNOWN_MODELS: { id: string; name: string; provider: string; badge: string; badgeColor: string }[] = [
-  { id: 'anthropic.claude-opus-4-6-v1',              name: 'Claude Opus 4.6',       provider: 'bedrock', badge: 'APEX',     badgeColor: '#a855f7' },
-  { id: 'anthropic.claude-sonnet-4-6',               name: 'Claude Sonnet 4.6',     provider: 'bedrock', badge: 'BALANCED', badgeColor: '#6366f1' },
-  { id: 'meta.llama4-maverick-17b-instruct-v1:0',    name: 'Llama 4 Maverick 17B',  provider: 'bedrock', badge: 'OPEN',     badgeColor: '#0ea5e9' },
-  { id: 'amazon.nova-premier-v1:0',                  name: 'Nova Premier',           provider: 'bedrock', badge: 'PREMIER',  badgeColor: '#f97316' },
-  { id: 'mistral.mistral-large-3-675b-instruct',     name: 'Mistral Large 3',        provider: 'bedrock', badge: 'EU',       badgeColor: '#eab308' },
-  { id: 'mistral.pixtral-large-2502-v1:0',           name: 'Pixtral Large',          provider: 'bedrock', badge: 'VISION',   badgeColor: '#ec4899' },
-  { id: 'google.gemma-3-27b-it',                     name: 'Gemma 3 27B',            provider: 'bedrock', badge: 'OPEN',     badgeColor: '#0ea5e9' },
-  { id: 'deepseek.v3.2',                             name: 'DeepSeek V3.2',          provider: 'bedrock', badge: 'NEW',      badgeColor: '#22c55e' },
-  { id: 'qwen.qwen3-235b-a22b-2507-v1:0',            name: 'Qwen3 235B',             provider: 'bedrock', badge: 'LARGE',    badgeColor: '#d97706' },
-  { id: 'moonshot.kimi-k2.5',                        name: 'Kimi K2.5',              provider: 'bedrock', badge: 'NEW',      badgeColor: '#22c55e' },
-  // Default demo model (Haiku 4.5) — kept for cross-region inference prefix match
-  { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5', provider: 'bedrock', badge: 'FAST', badgeColor: '#22c55e' },
+  { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5',  provider: 'bedrock', badge: 'DEFAULT',  badgeColor: '#22c55e' },
+  { id: 'us.anthropic.claude-sonnet-4-6[1m]',              name: 'Claude Sonnet 4.6', provider: 'bedrock', badge: 'BALANCED', badgeColor: '#6366f1' },
+  { id: 'us.anthropic.claude-opus-4-6-v1[1m]',             name: 'Claude Opus 4.6',   provider: 'bedrock', badge: 'APEX',     badgeColor: '#a855f7' },
+  { id: 'mistral.ministral-3-14b-instruct',                 name: 'Ministral 3 14B',   provider: 'bedrock', badge: 'EU',       badgeColor: '#eab308' },
+  { id: 'qwen.qwen3-next-80b-a3b',                          name: 'Qwen3 80B',         provider: 'bedrock', badge: 'NEW',      badgeColor: '#d97706' },
+  { id: 'openai.gpt-oss-safeguard-120b',                    name: 'GPT OSS 120B',      provider: 'bedrock', badge: 'OPEN',     badgeColor: '#10b981' },
+  { id: 'minimax.minimax-m2',                               name: 'MiniMax M2',        provider: 'bedrock', badge: 'NEW',      badgeColor: '#8b5cf6' },
+  { id: 'meta.llama3-3-70b-instruct-v1:0',                  name: 'Llama 3.3 70B',     provider: 'bedrock', badge: 'OPEN',     badgeColor: '#0ea5e9' },
+  { id: 'google.gemma-3-4b-it',                             name: 'Gemma 3 4B',        provider: 'bedrock', badge: 'OPEN',     badgeColor: '#4285f4' },
 ]
 
 function normalizeId(id: string): string {
@@ -158,7 +157,6 @@ interface LeaderboardEntry {
 }
 
 export function BenchmarkPanel() {
-  const [showModelDropdown, setShowModelDropdown] = useState(false)
   const benchmarkPanelOpen = useStore(s => s.benchmarkPanelOpen)
   const toggleBenchmarkPanel = useStore(s => s.toggleBenchmarkPanel)
   const benchmarkRuns = useStore(s => s.benchmarkRuns)
@@ -174,13 +172,18 @@ export function BenchmarkPanel() {
       .catch(() => {})
   }, [setCurrentModel])
 
-  // Build merged leaderboard: scored runs first, then unscored known models
+  // Sort: full runs first → then by revenue desc → then by totalReward desc
+  const sortedRuns = [...benchmarkRuns].sort((a, b) => {
+    if (a.isComplete !== b.isComplete) return a.isComplete ? -1 : 1
+    if (b.revenue !== a.revenue) return b.revenue - a.revenue
+    return b.totalReward - a.totalReward
+  })
+
   const scoredModelIds = new Set(benchmarkRuns.map(r => r.modelName))
 
   const entries: LeaderboardEntry[] = []
 
-  // Add all scored runs (sorted by totalReward already in store)
-  benchmarkRuns.forEach((run, i) => {
+  sortedRuns.forEach((run, i) => {
     const known = KNOWN_MODELS.find(m => normalizeId(m.id) === normalizeId(run.modelName))
     entries.push({
       rank: i + 1,
@@ -262,79 +265,13 @@ export function BenchmarkPanel() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                {/* Model Selector Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowModelDropdown(!showModelDropdown)}
-                    className="flex items-center gap-1 px-2 py-1 rounded transition-colors text-[10px] font-semibold"
-                    style={{
-                      background: 'var(--color-card-bg)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
-                    }}
-                  >
-                    {(() => {
-                      const logo = getProviderLogo(currentProvider, currentModel)
-                      return logo ? (
-                        <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', borderRadius: 3 }}>
-                          <img src={logo.src} alt={logo.alt} style={{ width: 12, height: 12, objectFit: 'contain' }} />
-                        </div>
-                      ) : null
-                    })()}
-                    {shortModelName(currentModel)}
-                    <span style={{ fontSize: 12 }}>▼</span>
-                  </button>
-
-                  {showModelDropdown && (
-                    <div
-                      className="absolute top-full right-0 mt-1 rounded shadow-lg z-50 max-h-64 overflow-y-auto"
-                      style={{
-                        background: 'var(--color-panel)',
-                        border: '1px solid var(--color-border)',
-                        minWidth: 220,
-                      }}
-                    >
-                      {KNOWN_MODELS.map(m => (
-                        <button
-                          key={m.id}
-                          onClick={() => {
-                            setCurrentModel(m.id, m.provider)
-                            setShowModelDropdown(false)
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] transition-colors text-left hover:bg-opacity-50"
-                          style={{
-                            background: normalizeId(m.id) === normalizeId(currentModel) ? 'var(--color-card-bg)' : 'transparent',
-                            color: 'var(--color-text-primary)',
-                            borderBottom: '1px solid var(--color-border)',
-                          }}
-                        >
-                          {(() => {
-                            const logo = getProviderLogo(m.provider, m.id)
-                            return logo ? (
-                              <div style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', borderRadius: 3, flexShrink: 0 }}>
-                                <img src={logo.src} alt={logo.alt} style={{ width: 14, height: 14, objectFit: 'contain' }} />
-                              </div>
-                            ) : null
-                          })()}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold truncate">{m.name}</div>
-                            <div style={{ fontSize: 8, color: 'var(--color-text-faint)' }}>{m.badge}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={toggleBenchmarkPanel}
-                  className="w-6 h-6 flex items-center justify-center rounded transition-colors"
-                  style={{ color: 'var(--color-text-faint)', fontSize: 14 }}
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                onClick={toggleBenchmarkPanel}
+                className="w-6 h-6 flex items-center justify-center rounded transition-colors"
+                style={{ color: 'var(--color-text-faint)', fontSize: 14 }}
+              >
+                ×
+              </button>
             </div>
 
             {/* Active model badge */}
@@ -369,8 +306,8 @@ export function BenchmarkPanel() {
             >
               <span>#</span>
               <span>Model</span>
-              <span className="text-right">Reward</span>
-              <span className="text-right">Revenue</span>
+              <span className="text-right" style={{ color: '#22c55e' }}>Revenue ↓</span>
+              <span className="text-right" style={{ color: '#6366f1' }}>Reward ↓</span>
               <span className="text-right">Steps</span>
             </div>
 
@@ -460,21 +397,7 @@ export function BenchmarkPanel() {
                     </div>
                   </div>
 
-                  {/* Reward */}
-                  <div className="flex flex-col items-end gap-1">
-                    {entry.run ? (
-                      <>
-                        <span className="text-[11px] font-mono font-semibold" style={{ color: '#6366f1' }}>
-                          {entry.run.totalReward.toFixed(1)}
-                        </span>
-                        {scoreBar(entry.run.totalReward, maxReward, '#6366f1')}
-                      </>
-                    ) : (
-                      <span className="text-[10px]" style={{ color: 'var(--color-text-faint)' }}>N/A</span>
-                    )}
-                  </div>
-
-                  {/* Revenue */}
+                  {/* Revenue — primary sort key */}
                   <div className="flex flex-col items-end gap-1">
                     {entry.run ? (
                       <>
@@ -482,6 +405,20 @@ export function BenchmarkPanel() {
                           ${(entry.run.revenue / 1000).toFixed(1)}k
                         </span>
                         {scoreBar(entry.run.revenue, maxRevenue, '#22c55e')}
+                      </>
+                    ) : (
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-faint)' }}>N/A</span>
+                    )}
+                  </div>
+
+                  {/* Reward — secondary sort key */}
+                  <div className="flex flex-col items-end gap-1">
+                    {entry.run ? (
+                      <>
+                        <span className="text-[11px] font-mono font-semibold" style={{ color: '#6366f1' }}>
+                          {entry.run.totalReward.toFixed(1)}
+                        </span>
+                        {scoreBar(entry.run.totalReward, maxReward, '#6366f1')}
                       </>
                     ) : (
                       <span className="text-[10px]" style={{ color: 'var(--color-text-faint)' }}>N/A</span>

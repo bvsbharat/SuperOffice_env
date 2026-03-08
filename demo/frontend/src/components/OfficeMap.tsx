@@ -80,9 +80,22 @@ export function OfficeMap() {
       {/* Overlays — outside 3D transform so z-index works reliably */}
       <MapOverlays bridge={bridge} />
 
-      {/* Camera Controls */}
+      {/* Camera Controls — bottom-right, above the footer */}
       {bridge && (
-        <div className="absolute top-3 right-3 flex flex-col gap-1.5 pointer-events-auto z-10">
+        <div className="absolute bottom-3 right-3 flex flex-col items-center gap-1.5 pointer-events-auto z-10">
+          {/* Tilt slider on top */}
+          <div className="flex flex-col items-center gap-0.5 mb-1">
+            <span className="text-[8px] select-none" style={{ color: 'var(--color-text-faint)' }}>TILT</span>
+            <input
+              type="range"
+              min="0"
+              max="45"
+              value={tilt}
+              onChange={(e) => setTilt(Number(e.target.value))}
+              className="tilt-slider"
+              title={`Tilt: ${tilt}°`}
+            />
+          </div>
           <button
             onClick={() => bridge.zoomIn()}
             className="map-control-btn"
@@ -107,20 +120,6 @@ export function OfficeMap() {
               <polyline points="3 22 3 16 9 16" />
             </svg>
           </button>
-
-          {/* Tilt slider */}
-          <div className="mt-2 flex flex-col items-center gap-0.5">
-            <span className="text-[8px] text-gray-400 select-none">TILT</span>
-            <input
-              type="range"
-              min="0"
-              max="45"
-              value={tilt}
-              onChange={(e) => setTilt(Number(e.target.value))}
-              className="tilt-slider"
-              title={`Tilt: ${tilt}°`}
-            />
-          </div>
         </div>
       )}
     </div>

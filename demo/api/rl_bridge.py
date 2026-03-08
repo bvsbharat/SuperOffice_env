@@ -281,7 +281,7 @@ class OfficeOsBridge:
         reward = self._obs.reward
         self._reward_totals[role] += reward
 
-        # Record action
+        # Record action (include reward so reward_history is meaningful)
         self._action_log.append({
             "role": role,
             "action": action_dict["action_type"],
@@ -289,17 +289,31 @@ class OfficeOsBridge:
             "reasoning": action_dict.get("reasoning", ""),
             "success": result.get("success", False),
             "detail": result.get("detail", ""),
+            "reward": round(reward, 3),
             "day": self._obs.day,
             "turn": self._turn,
         })
 
-        # Record conversation entry
+        # Record reasoning entry
         self._conversations.append({
             "step": self._turn,
             "from_agent": role,
             "to_agent": "self",
             "text": action_dict.get("reasoning", f"{action_dict['action_type']} -> {action_dict.get('target', '')}"),
             "msg_type": "reasoning",
+        })
+
+        # Record action entry (action type + outcome + reward, used by RewardPanel dropdown)
+        action_label = action_dict["action_type"].replace("_", " ")
+        target = action_dict.get("target", "")
+        outcome = result.get("detail", "") or ("success" if result.get("success") else "no effect")
+        self._conversations.append({
+            "step": self._turn,
+            "from_agent": role,
+            "to_agent": "self",
+            "text": f"{action_label}{(' → ' + target) if target else ''} | {outcome}",
+            "msg_type": "action",
+            "reward": round(reward, 3),
         })
 
         # Record inter-agent messages

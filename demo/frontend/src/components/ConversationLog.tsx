@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import type { MsgType, AgentId } from '../types'
-import { AGENT_ORDER } from '../types'
+import { AGENT_ORDER, agentIconPath } from '../types'
 
 const MSG_BG: Record<MsgType, string> = {
-  reasoning: 'border-l-2 border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-800/50',
-  event:     'border-l-2 border-l-orange-400 bg-orange-50 dark:bg-orange-950/30',
-  chat:      'border-l-2 border-l-blue-300 dark:border-l-blue-600 bg-blue-50 dark:bg-blue-950/20',
-  action:    'border-l-2 border-l-emerald-400 bg-emerald-50 dark:bg-emerald-950/20',
+  reasoning: 'border-l-2 border-l-slate-300 dark:border-l-[#75715e] bg-slate-50 dark:bg-[rgba(117,113,94,0.08)]',
+  event:     'border-l-2 border-l-orange-400 dark:border-l-[#fd971f] bg-orange-50 dark:bg-[rgba(253,151,31,0.08)]',
+  chat:      'border-l-2 border-l-blue-300 dark:border-l-[#66d9ef] bg-blue-50 dark:bg-[rgba(102,217,239,0.07)]',
+  action:    'border-l-2 border-l-emerald-400 dark:border-l-[#a6e22e] bg-emerald-50 dark:bg-[rgba(166,226,46,0.07)]',
 }
 
 const MSG_LABEL: Record<MsgType, string> = {
@@ -19,10 +19,10 @@ const MSG_LABEL: Record<MsgType, string> = {
 }
 
 const MSG_LABEL_COLOR: Record<MsgType, string> = {
-  reasoning: '#64748b',
-  event:     '#ea580c',
-  chat:      '#3b82f6',
-  action:    '#16a34a',
+  reasoning: '#75715e',
+  event:     '#fd971f',
+  chat:      '#66d9ef',
+  action:    '#a6e22e',
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -93,26 +93,39 @@ export function ConversationLog() {
               className={`rounded px-2 py-1 text-[10px] ${MSG_BG[msg.msg_type] ?? MSG_BG.chat}`}
             >
               <div className="flex items-center gap-1.5 mb-0.5">
-                <span
-                  className="text-[8px] font-bold px-1 rounded"
-                  style={{ color: MSG_LABEL_COLOR[msg.msg_type], background: `${MSG_LABEL_COLOR[msg.msg_type]}15` }}
-                >
-                  {MSG_LABEL[msg.msg_type] ?? 'MSG'}
-                </span>
-                <span style={{ color: AGENT_COLORS[msg.from_agent] ?? '#64748b' }} className="font-semibold">
+                {/* From agent icon + name */}
+                <img
+                  src={agentIconPath(msg.from_agent as AgentId)}
+                  alt={msg.from_agent}
+                  className="w-4 h-4 rounded-full object-cover shrink-0"
+                  style={{ outline: `1.5px solid ${AGENT_COLORS[msg.from_agent] ?? '#64748b'}` }}
+                />
+                <span style={{ color: AGENT_COLORS[msg.from_agent] ?? '#64748b' }} className="font-semibold text-[10px]">
                   {msg.from_agent}
                 </span>
                 {msg.to_agent !== 'self' && msg.to_agent !== msg.from_agent && (
                   <>
-                    <span style={{ color: 'var(--color-card-border)' }}>-&gt;</span>
-                    <span style={{ color: AGENT_COLORS[msg.to_agent] ?? '#64748b' }}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>→</span>
+                    <img
+                      src={agentIconPath(msg.to_agent as AgentId)}
+                      alt={msg.to_agent}
+                      className="w-4 h-4 rounded-full object-cover shrink-0"
+                      style={{ outline: `1.5px solid ${AGENT_COLORS[msg.to_agent] ?? '#64748b'}` }}
+                    />
+                    <span style={{ color: AGENT_COLORS[msg.to_agent] ?? '#cfcfc2' }} className="text-[10px]">
                       {msg.to_agent}
                     </span>
                   </>
                 )}
-                <span className="ml-auto" style={{ color: 'var(--color-card-border)' }}>t{msg.step}</span>
+                <span
+                  className="text-[8px] font-bold px-1 rounded ml-1"
+                  style={{ color: MSG_LABEL_COLOR[msg.msg_type], background: `${MSG_LABEL_COLOR[msg.msg_type]}18` }}
+                >
+                  {MSG_LABEL[msg.msg_type] ?? 'MSG'}
+                </span>
+                <span className="ml-auto" style={{ color: 'var(--color-text-muted)' }}>t{msg.step}</span>
               </div>
-              <div className="leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{msg.text}</div>
+              <div className="leading-relaxed" style={{ color: 'var(--color-text-primary)' }}>{msg.text}</div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -124,14 +137,22 @@ export function ConversationLog() {
               Shared Memory
             </div>
             {sharedMemory.slice(-5).map((entry, i) => (
-              <div key={i} className="text-[10px] rounded px-2 py-1 mb-0.5 border-l-2 border-l-purple-400 bg-purple-50 dark:bg-purple-950/20">
-                <span style={{ color: AGENT_COLORS[entry.author] ?? '#64748b' }} className="font-semibold">
-                  {entry.author}
-                </span>
-                <span className="text-[8px] ml-1 px-1 rounded" style={{ background: '#a855f715', color: '#a855f7' }}>
-                  {entry.type}
-                </span>
-                <div className="leading-relaxed mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{entry.content}</div>
+              <div key={i} className="text-[10px] rounded px-2 py-1 mb-0.5 border-l-2 border-l-purple-400 bg-purple-50 dark:bg-[rgba(174,129,255,0.07)]">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <img
+                    src={agentIconPath(entry.author as AgentId)}
+                    alt={entry.author}
+                    className="w-4 h-4 rounded-full object-cover shrink-0"
+                    style={{ outline: `1.5px solid ${AGENT_COLORS[entry.author] ?? '#ae81ff'}` }}
+                  />
+                  <span style={{ color: AGENT_COLORS[entry.author] ?? '#64748b' }} className="font-semibold">
+                    {entry.author}
+                  </span>
+                  <span className="text-[8px] px-1 rounded" style={{ background: '#a855f715', color: '#a855f7' }}>
+                    {entry.type}
+                  </span>
+                </div>
+                <div className="leading-relaxed mt-0.5" style={{ color: 'var(--color-text-primary)' }}>{entry.content}</div>
               </div>
             ))}
           </div>
