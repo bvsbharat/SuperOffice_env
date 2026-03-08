@@ -84,28 +84,164 @@ Each handler modifies the market state and returns a result dict. Key handler ca
 
 #### Reward Calculation (`market/metrics.py`)
 
-The `RewardCalculator` computes per-agent rewards after each action with multiple components:
+The `RewardCalculator` computes per-agent rewards after each action. Rewards are the training signal — they tell agents which actions are valuable and drive GRPO optimization.
 
-1. **Pipeline transition rewards** — Agents earn rewards when customers advance through the pipeline (`visitor → lead → qualified → demo → proposal → negotiation → closed_won`). Rewards scale by contract tier (monthly 1x, 6-month 2x, annual 3x).
-2. **KPI delta rewards** — Changes in key metrics (revenue, traffic, conversion, stability) contribute to reward.
-3. **Direct action rewards** — Specific actions carry inherent rewards (e.g., shipping a feature, publishing content).
-4. **Collaboration bonuses** — Cross-agent synergies earn extra reward (content about shipped features, sales referencing content in demos).
-5. **Constraint penalties** — Stale leads (-0.5 each), budget overrun warnings, vaporware (announced but unbuilt features, -5).
+**Component 1: Pipeline Transition Rewards**
+
+Agents earn rewards when customers advance through pipeline stages. Each stage has role-specific payouts, and `closed_won` rewards scale by contract tier:
+
+| Stage | Sales | Marketing | Dev | Content | CEO | HR | Customer |
+|-------|-------|-----------|-----|---------|-----|----|----------|
+| visitor | — | — | — | +0.5 | — | — | — |
+| lead | — | +1.5 | — | +1.0 | — | — | — |
+| qualified | +1.0 | — | — | — | — | +0.3 | — |
+| demo | +1.5 | — | +0.5 | — | — | — | — |
+| proposal | +2.0 | — | — | — | — | — | — |
+| closed_won | +10.0 | +3.0 | +2.0 | +2.0 | +5.0 | +1.0 | +2.0 |
+| closed_lost | -3.0 | -1.0 | — | — | -2.0 | — | — |
+| churned | -3.0 | -1.0 | -5.0 | -1.0 | -3.0 | — | -5.0 |
+
+Contract tier multipliers on `closed_won`: monthly (1x), 6-month (2x), annual (3x).
+
+**Component 2: KPI Delta Rewards**
+
+Small rewards for improving company-wide metrics between turns:
+
+| KPI | Primary beneficiary | Reward formula |
+|-----|---------------------|----------------|
+| Website traffic increase | Marketing, Content (+1x) / Others (+0.2x) | `min(delta / 500, 1.0)` |
+| Revenue increase | Sales (+2x) / Others (+0.5x) | `min(delta / 5000, 2.0)` |
+| Pipeline value increase | Sales | `min(delta / 10000, 1.0)` |
+
+**Component 3: Direct Action Rewards**
+
+Specific high-impact actions carry inherent rewards:
+
+| Agent | Action | Reward | Condition |
+|-------|--------|--------|-----------|
+| Dev | `SHIP_RELEASE` | +3.0 | Feature successfully shipped |
+| Dev | `BUILD_FEATURE` | +0.5 | Build progress made |
+| Content | Any publish | +0.5 | Content published |
+| CEO | `SET_OKRS` | +1.0 | — |
+| CEO | `SEND_DIRECTIVE` | +0.3 | — |
+| HR | `RESOLVE_BLOCKER` | +1.5 | — |
+| HR | `PLAN_SPRINT` | +0.5 | — |
+| HR | Velocity boost | +1.0 | Action mentions velocity |
+| Customer | `REFER_LEAD` | +2.0 | New lead generated |
+| Customer | `RENEW_CONTRACT` | +3.0 | Contract renewed |
+| Customer | `GIVE_FEEDBACK` | +0.5 | — |
+| Customer | `EVALUATE_PRODUCT` | +0.3 | — |
+| Any | Failed action | -1.0 | `success: false` |
+
+**Component 4: Collaboration Bonuses**
+
+Cross-agent synergies that reward teamwork:
+
+| Collaboration | Agents | Bonus |
+|---------------|--------|-------|
+| Content references a shipped feature | Content + Dev | +1.0 |
+| Sales demos use existing content | Sales + Content | +0.5 |
+| Dev builds feature from customer feedback | Dev + Sales | +1.0 |
+| Marketing promotes existing content | Marketing + Content | +0.5 |
+
+**Component 5: Constraint Penalties**
+
+| Violation | Agent | Penalty |
+|-----------|-------|---------|
+| Vaporware (unshipped feature referenced) | Any | -5.0 |
+| Stale leads (not contacted in 4+ days) | Sales | -0.5 per lead |
+| Budget overrun (budget < $1,000) | Marketing | -0.5 |
+
+#### GRPO Training Reward (`training/train_worker.py`)
+
+During GRPO training on the Northflank H100, a separate reward function scores each generated completion. This is distinct from the simulation reward — it evaluates **output quality** rather than business outcomes. Two reward functions run in parallel:
+
+**Reward Function 1: Format & Validity Scorer** (`score_completion`)
+
+Scores each completion on structural correctness (0.0 to ~1.45):
+
+| Component | Score | Criteria |
+|-----------|-------|----------|
+| Valid JSON | +0.3 | Response parses as JSON |
+| Clean output (no extra text) | +0.1 | No text before/after JSON |
+| Has `action_type` field | +0.2 | JSON contains action_type |
+| Valid action for role | +0.3 | action_type is in role's allowed list |
+| Wrong-role action | -0.2 | action_type exists but isn't allowed for this role |
+| Reasoning (10+ words) | +0.2 | Substantive reasoning |
+| Reasoning (5-9 words) | +0.1 | Brief reasoning |
+| Reasoning (1-4 words) | +0.05 | Minimal |
+| Non-empty target | +0.1 | Target is meaningful (not "auto") |
+| Target references context | +0.1 | Target mentions known customer/feature names |
+| Proper message format | +0.1 | Message uses `"role: text"` format |
+| Has parameters | +0.05 | Non-empty parameters dict |
+
+**Reward Function 2: LLM-as-a-Judge** (`llm_judge_reward`)
+
+Uses the **local vLLM (Qwen 2.5 3B-Instruct base model)** to rate each completion on strategic quality. The judge scores on a 1-5 scale:
+
+| Score | Meaning |
+|-------|---------|
+| 1 (→ 0.0) | Invalid/garbage output |
+| 2 (→ 0.25) | Valid format but poor strategic choice |
+| 3 (→ 0.5) | Acceptable action, generic reasoning |
+| 4 (→ 0.75) | Good action with clear strategic reasoning |
+| 5 (→ 1.0) | Excellent — right action, specific target, strong reasoning, good team communication |
+
+The judge runs at temperature 0.0 with max 8 tokens. Falls back to 0.5 (neutral) on any error to avoid blocking training.
+
+Both reward functions are passed to TRL's `GRPOTrainer` as `reward_funcs=[score_completion, llm_judge_reward]`.
+
+#### Scenarios (`market/scenarios.py`)
+
+Five scenarios test multi-agent coordination under different market conditions. Each scenario modifies initial state and injects scheduled events on specific days:
+
+**Baseline GTM Launch** (`baseline`)
+- Standard conditions. Market is receptive, competition is low.
+- No scheduled events. Random events fire at normal 15% probability per day.
+
+**Competitor Launch** (`competitor`)
+- Starting traffic reduced to 80%. Event probability increased to 1.5x.
+- Day 3: Competitor raises $50M — leads get objections, brand awareness drops.
+- Day 7: Competitor matches your features — traffic drops, conversion drops, "Unique Differentiator" added to backlog.
+- Day 15: Competitor offers discounts to your pipeline leads — satisfaction drops.
+- Day 25: Competitor dominates press — brand awareness and traffic take major hit.
+
+**Series A Pressure** (`series_a`)
+- Starting budget doubled (2x). 4 initial leads + 2 extra enterprise customers seeded.
+- Day 1: Board demands 3x MRR growth — directive posted to shared memory.
+- Day 30: Investor mid-quarter review — revenue checked against target.
+- Day 60: Final 30-day stretch — emergency $5k budget injection.
+
+**Churn Spike** (`churn`)
+- NPS starts at 25 (vs. 50 baseline). Satisfaction at 0.3 (vs. 0.5). Stability at 0.5 (vs. 1.0).
+- 4 critical/high bugs pre-loaded in backlog.
+- Day 1: 20% churn warning — NPS capped at 25.
+- Day 5: Enterprise customer escalates to CEO — demands fixes in 7 days.
+- Day 10: First customers actually cancel — up to 2 churn, NPS drops further.
+- Day 20: Board checks if NPS > 40.
+
+**Viral Moment** (`viral`)
+- Starting traffic tripled (3x). 6 initial leads + 4 extra customers seeded.
+- 2 infrastructure scaling items pre-loaded in backlog.
+- Day 1: Product demo goes viral — traffic spikes 2-5k, brand awareness +20, 3-6 new leads.
+- Day 3: 100+ demo requests flooding in — 4-8 new leads spawned.
+- Day 7: Infrastructure strain — stability drops 0.3, NPS drops 15, critical bug added.
+- Day 15: TechCrunch coverage — brand awareness +25, traffic spikes 3-8k.
 
 #### Market Events (`market/events.py`)
 
-The `EventEngine` injects random market events to create dynamic scenarios:
+Beyond scenario-scheduled events, the `EventEngine` injects random market events each day (15% base probability, modified by scenario):
 
 | Event | Effect |
 |-------|--------|
-| Competitor Launch | Reduces traffic, increases urgency |
-| Viral Moment | Spikes traffic, generates leads |
-| PR Crisis | Drops brand awareness, requires response |
-| Algorithm Change | Shifts content effectiveness |
-| Budget Cut | Reduces available budget |
-| Big Customer Inquiry | High-value lead enters pipeline |
-| Feature Request Wave | Multiple customers request same feature |
-| Success Story | Boosts brand awareness, generates referrals |
+| Competitor Launch | Traffic -50 to -200, brand awareness -3, 20% of leads get objections |
+| Viral Moment | Traffic +500 to +2000, brand awareness +10, 2-5 new leads spawned |
+| PR Crisis | Brand awareness -15, all leads get "Concerned about recent press" objection |
+| Algorithm Change | Traffic shifts -300 to +100 |
+| Budget Cut | Budget reduced by 30% |
+| Big Customer Inquiry | Enterprise lead ($200k budget) enters pipeline |
+| Feature Request Wave | High-priority feature added to backlog from customer demand |
+| Customer Success Story | Happy customer offers case study opportunity |
 
 ### 2. Agent System (`agents/`)
 
