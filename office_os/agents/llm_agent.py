@@ -127,46 +127,69 @@ class LLMAgent:
         user_msg = self._build_user_message(observation, turn)
         self.last_user_message = user_msg
 
-        call_fn = self._call_vllm if self.use_vllm else self._call_structured
         mode = "vLLM" if self.use_vllm else "Claude"
 
         action = None
-        for attempt in range(5):
+        rejected_actions: list[str] = []
+        max_attempts = 8
+        for attempt in range(max_attempts):
             try:
-                action = call_fn(user_msg)
+                if self.use_vllm:
+                    action = self._call_vllm(user_msg, rejected_actions=rejected_actions)
+                else:
+                    action = self._call_structured(user_msg)
                 if action.action_type not in self._allowed_actions:
-                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying ({attempt+1}/5)...")
+                    rejected_actions.append(action.action_type)
+                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying ({attempt+1}/{max_attempts})...")
                     action = None
                     continue
                 break
             except Exception as e:
-                logger.warning(f"{mode} attempt {attempt+1}/5 for {self.role}: {type(e).__name__}: {e}")
+                logger.warning(f"{mode} attempt {attempt+1}/{max_attempts} for {self.role}: {type(e).__name__}: {e}")
                 import traceback
                 logger.warning(traceback.format_exc())
-                if attempt < 4:
+                if attempt < max_attempts - 1:
                     import time
                     time.sleep(2)
 
+        # Last resort: pick the first allowed action rather than crashing
         if action is None:
-            raise RuntimeError(f"{mode} model failed after 5 attempts for {self.role}")
+            fallback_action = self._allowed_actions[0]
+            logger.warning(f"{self.role}: all {max_attempts} attempts failed, using fallback action '{fallback_action}'")
+            action = AgentAction(
+                action_type=fallback_action,
+                target="auto",
+                reasoning="Fallback action after failed attempts",
+            )
 
         result = action.model_dump()
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
         return result
 
-    def _call_vllm(self, user_msg: str) -> AgentAction:
+    def _call_vllm(self, user_msg: str, rejected_actions: list[str] | None = None) -> AgentAction:
         """Call vLLM model via OpenAI-compatible endpoint.
 
         Uses plain JSON prompting (no tools/function-calling) for maximum
-        compatibility with vLLM + Qwen models.
+        compatibility with vLLM + Qwen models. Includes strong role constraints
+        to prevent the small model from picking actions from other roles.
         """
-        actions_str = ", ".join(self._allowed_actions)
+        actions_list = "\n".join(f"  - {a}" for a in self._allowed_actions)
         json_instruction = (
-            f"\n\nRespond with ONLY a JSON object (no other text). "
-            f"action_type MUST be one of: {actions_str}\n"
-            f"Format: {{\"action_type\": \"...\", \"target\": \"...\", "
-            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": null}}"
+            f"\n\n## CRITICAL INSTRUCTIONS\n"
+            f"You are the **{self.role}** agent. You can ONLY use these actions:\n"
+            f"{actions_list}\n\n"
+            f"Do NOT use actions from other roles. Any action not listed above is INVALID.\n\n"
+            f"Respond with ONLY a valid JSON object, nothing else:\n"
+            f"{{\"action_type\": \"<one of the actions above>\", \"target\": \"...\", "
+            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": \"role: message\"}}"
         )
+
+        if rejected_actions:
+            unique_rejected = list(dict.fromkeys(rejected_actions))
+            json_instruction += (
+                f"\n\nWARNING: These actions are INVALID and were already rejected: "
+                f"{', '.join(unique_rejected)}. Do NOT use them."
+            )
 
         response = self.openai_client.chat.completions.create(
             model=self._vllm_endpoint["model_name"],
