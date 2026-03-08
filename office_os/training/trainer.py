@@ -45,7 +45,7 @@ class RemoteTrainer:
         collector: TrajectoryCollector,
         base_model: str = "Qwen/Qwen2.5-14B-Instruct",
         train_every_days: int = 3,
-        min_trajectories: int = 3,
+        min_trajectories: int = 10,
         northflank_endpoint: str = "",
         learning_rate: float = 2e-5,
     ):

@@ -168,7 +168,7 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
                     return (int(ch) - 1) / 4.0  # Normalize: 1->0.0, 5->1.0
         return 0.5
     except Exception as e:
-        logger.debug(f"LLM judge ({_judge_provider}) failed: {e}")
+        logger.warning(f"LLM judge ({_judge_provider}) failed: {e}")
         return 0.5  # Neutral on failure — don't block training
 
 

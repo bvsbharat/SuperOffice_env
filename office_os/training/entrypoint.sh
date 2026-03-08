@@ -17,7 +17,7 @@ cd "$REPO_DIR/office_os"
 # ── Install deps (cached after first run if volume mounted) ───────
 pip install -q "trl>=0.12" "datasets>=3.0" "peft>=0.13" "accelerate>=1.0" "bitsandbytes>=0.44"
 pip install -q "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
-pip install -q wandb huggingface_hub httpx
+pip install -q wandb huggingface_hub httpx boto3
 pip install -q "vllm>=0.6"
 
 # ── Auth (if tokens set in Northflank Environment) ────────────────
