@@ -1,6 +1,12 @@
 import Phaser from 'phaser'
 import type { AgentId, Phase } from '../types'
 import { AGENT_ORDER } from '../types'
+import { BehaviorManager, AgentState } from './agentBehavior'
+import { SpeechBubbleManager } from './speechBubbles'
+import { VisualEffects } from './visualEffects'
+import { CollaborationVisuals } from './collaborationVisuals'
+import { AgentStatusOverlay } from './agentStatusOverlay'
+import { ease, lerp } from './easing'
 import {
   ROOM_TILE_CENTERS,
   STANDUP_POSITIONS,
@@ -67,6 +73,13 @@ export class OfficeScene extends Phaser.Scene {
   private camStartScrollX = 0
   private camStartScrollY = 0
   private defaultZoom = 1
+  private behaviorManager: BehaviorManager = new BehaviorManager()
+  private speechBubbleManager: SpeechBubbleManager | null = null
+  private visualEffects: VisualEffects | null = null
+  private collaborationVisuals: CollaborationVisuals | null = null
+  private statusOverlay: AgentStatusOverlay | null = null
+  private activeAgent: AgentId | null = null
+  private activeCollaborations: Map<string, any> = new Map()
   bridge: PhaserBridge | null = null
 
   constructor() {
@@ -142,6 +155,12 @@ export class OfficeScene extends Phaser.Scene {
 
     const foreground = map.createLayer('Foreground L1', allTilesets)
     if (foreground) foreground.setDepth(10)
+
+    // Initialize visual systems
+    this.speechBubbleManager = new SpeechBubbleManager(this)
+    this.visualEffects = new VisualEffects(this)
+    this.collaborationVisuals = new CollaborationVisuals(this)
+    this.statusOverlay = new AgentStatusOverlay(this)
 
     // Create agent sprites (depth 5-9, between furniture and foreground)
     for (const aid of AGENT_ORDER) {
@@ -309,6 +328,9 @@ export class OfficeScene extends Phaser.Scene {
     nameText.setDepth(7)
     nameText.texture.setFilter(Phaser.Textures.FilterMode.LINEAR)
 
+    // Initialize behavior for agent
+    this.behaviorManager.initialize(aid, x, y)
+
     this.agentSprites.set(aid, {
       sprite,
       nameText,
@@ -317,27 +339,60 @@ export class OfficeScene extends Phaser.Scene {
     })
   }
 
-  update() {
+  update(_time: number, delta: number) {
+    // Update visual systems
+    if (this.visualEffects) {
+      this.visualEffects.update(delta)
+      this.visualEffects.render()
+    }
+    if (this.collaborationVisuals) {
+      this.collaborationVisuals.update()
+    }
+    if (this.speechBubbleManager) {
+      this.speechBubbleManager.update(delta)
+    }
+
     // Move agents toward their target positions
     for (const [aid, agentData] of this.agentSprites) {
       const { sprite, nameText } = agentData
+      const behavior = this.behaviorManager.get(aid)
+      if (!behavior) continue
+
       const dx = agentData.targetX - sprite.x
       const dy = agentData.targetY - sprite.y
       const dist = Math.sqrt(dx * dx + dy * dy)
 
-      if (dist > 2) {
-        const vx = (dx / dist) * MOVEMENT_SPEED
-        const vy = (dy / dist) * MOVEMENT_SPEED
+      // Determine if moving
+      const isMoving = dist > 2
 
-        sprite.x += vx
-        sprite.y += vy
+      // Update behavior based on current state
+      this.behaviorManager.updateBehavior(
+        aid,
+        this.currentPhase,
+        aid === this.activeAgent,
+        isMoving,
+        behavior.collaboratingWith,
+        delta
+      )
 
-        // Pick animation direction
-        if (Math.abs(dx) > Math.abs(dy)) {
-          sprite.anims.play(`${aid}-${dx > 0 ? 'right' : 'left'}-walk`, true)
-        } else {
-          sprite.anims.play(`${aid}-${dy > 0 ? 'down' : 'up'}-walk`, true)
-        }
+      // Update direction facing based on movement
+      if (isMoving) {
+        this.behaviorManager.updateDirectionFromDelta(aid, dx, dy)
+      }
+
+      const updatedBehavior = this.behaviorManager.get(aid)!
+      const state = updatedBehavior.state
+
+      // Smooth movement with easing
+      if (isMoving) {
+        const moveSpeed = MOVEMENT_SPEED * (delta / 16) // Frame-rate independent
+        const moveAmount = Math.min(moveSpeed, dist)
+        sprite.x += (dx / dist) * moveAmount
+        sprite.y += (dy / dist) * moveAmount
+
+        // Play walk animation
+        const direction = updatedBehavior.direction
+        sprite.anims.play(`${aid}-${direction}-walk`, true)
       } else {
         // Arrived at target
         sprite.x = agentData.targetX
@@ -348,8 +403,12 @@ export class OfficeScene extends Phaser.Scene {
         }
       }
 
+      // Apply idle bob offset (subtle up/down animation)
+      const bobOffset = this.behaviorManager.getIdleBobOffset(aid)
+      const baseY = sprite.y + bobOffset
+
       // Update name position
-      nameText.setPosition(sprite.x, sprite.y + 28)
+      nameText.setPosition(sprite.x, baseY + 28)
 
       // Update speech bubble position or expire
       const bubbleObj = this.speechBubbleObjects.get(aid)
@@ -358,17 +417,34 @@ export class OfficeScene extends Phaser.Scene {
           this.hideSpeechBubble(aid)
         } else {
           // Graphics drawn relative to origin, so just move it
-          bubbleObj.bubble.setPosition(sprite.x, sprite.y + BUBBLE_OFFSET_Y)
+          bubbleObj.bubble.setPosition(sprite.x, baseY + BUBBLE_OFFSET_Y)
           // Reposition text to stay centered in the bubble
           const textW = bubbleObj.label.width
           const textH = bubbleObj.label.height
           const boxH = textH + 2 * BUBBLE_PADDING
           bubbleObj.label.setPosition(
             sprite.x - textW / 2,
-            sprite.y + BUBBLE_OFFSET_Y - (boxH + BUBBLE_TAIL_SIZE) + BUBBLE_PADDING
+            baseY + BUBBLE_OFFSET_Y - (boxH + BUBBLE_TAIL_SIZE) + BUBBLE_PADDING
           )
         }
       }
+
+      // Update status overlay (progress bar, work icon, status border)
+      if (this.statusOverlay) {
+        this.statusOverlay.updateOverlay(
+          aid,
+          sprite.x,
+          sprite.y,
+          state,
+          0.5,
+          aid === this.activeAgent
+        )
+      }
+    }
+
+    // Render speech bubbles and collaboration visuals
+    if (this.speechBubbleManager) {
+      this.speechBubbleManager.render(this.agentSprites)
     }
   }
 
@@ -376,6 +452,8 @@ export class OfficeScene extends Phaser.Scene {
     agents: Record<string, { status: string; name: string; emoji: string; color: string }>,
     activeAgent: string | null
   ) {
+    this.activeAgent = activeAgent as AgentId | null
+
     for (const aid of AGENT_ORDER) {
       const agentData = this.agentSprites.get(aid)
       const agent = agents[aid]
@@ -385,13 +463,18 @@ export class OfficeScene extends Phaser.Scene {
       const displayName = agent.name.split('/')[0]
       agentData.nameText.setText(`${displayName} ${agent.emoji}`)
 
-      // Highlight active agent
-      if (aid === activeAgent) {
-        agentData.sprite.setTint(0xffff88)
-        agentData.sprite.setScale(1.8)
-      } else {
-        agentData.sprite.clearTint()
-        agentData.sprite.setScale(1.5)
+      // Apply behavior-based scale and tint
+      const behavior = this.behaviorManager.get(aid)
+      if (behavior) {
+        const scale = this.behaviorManager.getStateScale(behavior.state, aid === activeAgent)
+        agentData.sprite.setScale(scale)
+
+        // Highlight active agent
+        if (aid === activeAgent) {
+          agentData.sprite.setTint(0xffff88)
+        } else {
+          agentData.sprite.clearTint()
+        }
       }
     }
   }
@@ -494,4 +577,81 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Handle agent collaboration event
+   *
+   * Triggers when two agents start working together
+   */
+  public handleCollaboration(from: AgentId, to: AgentId, type: 'message' | 'coordinate' | 'handoff') {
+    const agent1 = this.agentSprites.get(from)
+    const agent2 = this.agentSprites.get(to)
+    if (!agent1 || !agent2) return
+
+    const key = `${from}-${to}`
+
+    // Move agents toward midpoint for visual collaboration
+    const midX = (agent1.sprite.x + agent2.sprite.x) / 2
+    const midY = (agent1.sprite.y + agent2.sprite.y) / 2
+
+    // Set slight offsets so they don't overlap
+    agent1.targetX = midX - 25
+    agent1.targetY = midY
+    agent2.targetX = midX + 25
+    agent2.targetY = midY
+
+    // Draw collaboration line with icon
+    if (this.collaborationVisuals) {
+      this.collaborationVisuals.drawLine(
+        from,
+        to,
+        { x: agent1.sprite.x, y: agent1.sprite.y },
+        { x: agent2.sprite.x, y: agent2.sprite.y },
+        type,
+        3000 // 3 second collaboration duration
+      )
+    }
+
+    // Add glows to both agents
+    if (this.visualEffects) {
+      this.visualEffects.addGlow(from, agent1.sprite.x, agent1.sprite.y, 0x22c55e)
+      this.visualEffects.addGlow(to, agent2.sprite.x, agent2.sprite.y, 0x22c55e)
+    }
+
+    // Track active collaboration
+    this.activeCollaborations.set(key, {
+      from,
+      to,
+      type,
+      startTime: Date.now(),
+      duration: 3000,
+    })
+
+    // Remove after duration
+    setTimeout(() => {
+      this.activeCollaborations.delete(key)
+      if (this.visualEffects) {
+        this.visualEffects.removeGlow(from)
+        this.visualEffects.removeGlow(to)
+      }
+    }, 3000)
+  }
+
+  /**
+   * Trigger celebration particles and effects
+   */
+  public celebrateSuccess(agentId: AgentId, intensity: 'low' | 'medium' | 'high' = 'medium') {
+    const agent = this.agentSprites.get(agentId)
+    if (!agent || !this.visualEffects) return
+
+    const count = { low: 6, medium: 12, high: 20 }[intensity]
+    this.visualEffects.emitCelebration(agent.sprite.x, agent.sprite.y, count)
+
+    // Screen shake for high intensity
+    if (intensity === 'high') {
+      const camera = this.cameras.main
+      camera.shake(500, 0.01)
+    }
+  }
+
 }
+

@@ -1,0 +1,18 @@
+[     191ms] [WARNING] WebSocket connection to 'ws://localhost:8080/ws/live' failed: WebSocket is closed before the connection is established. @ http://localhost:5176/src/hooks/useWebSocket.ts:50
+[     207ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[     207ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[     282ms] [WARNING] WebSocket connection to 'ws://localhost:8080/ws/live' failed: WebSocket is closed before the connection is established. @ http://localhost:5176/src/hooks/useWebSocket.ts:36
+[     288ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/state:0
+[     288ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[     288ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[     344ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/state:0
+[    2291ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    2366ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    4325ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    4399ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    6353ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    6441ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    8389ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    8519ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[   10468ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[   10586ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12

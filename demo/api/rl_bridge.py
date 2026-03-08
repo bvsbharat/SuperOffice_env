@@ -303,6 +303,7 @@ class OfficeOsBridge:
         })
 
         # Record inter-agent messages
+        collaborations = []
         if action_dict.get("message"):
             msg = action_dict["message"]
             to_agent = "all"
@@ -317,6 +318,27 @@ class OfficeOsBridge:
                 "text": msg_text,
                 "msg_type": "chat",
             })
+            # Track collaboration event
+            if to_agent != "all":
+                collaborations.append({
+                    "from": role,
+                    "to": to_agent,
+                    "type": "message",
+                    "reason": msg_text[:100],
+                })
+
+        # Check for target-based collaborations
+        if action_dict.get("target"):
+            target = action_dict.get("target", "").lower()
+            for agent_role in AGENT_ROLES:
+                if agent_role != role and agent_role in target:
+                    collaborations.append({
+                        "from": role,
+                        "to": agent_role,
+                        "type": "coordinate",
+                        "reason": action_dict.get("action_type", ""),
+                    })
+                    break
 
         # Record KPI snapshot
         kpis = self._get_kpis()
@@ -341,6 +363,7 @@ class OfficeOsBridge:
             "done": self._done,
             "events": self._obs.events,
             "actionResult": result,
+            "collaborations": collaborations,  # NEW: collaboration events
             "state": self.get_state(),
         }
 

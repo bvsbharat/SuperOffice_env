@@ -19,6 +19,31 @@ interface CoordArrow {
   expiresAt: number
 }
 
+interface Collaboration {
+  from: AgentId
+  to: AgentId
+  type: 'message' | 'coordinate' | 'handoff'
+  startTime: number
+  duration: number
+  meetPoint: { x: number; y: number }
+  active: boolean
+}
+
+export interface BenchmarkRun {
+  id: string
+  modelName: string
+  provider: string
+  steps: number
+  totalReward: number
+  isComplete: boolean
+  revenue: number
+  conversionRate: number
+  featuresShipped: number
+  contentPublished: number
+  npsScore: number
+  timestamp: number
+}
+
 interface GTMStore {
   // RL State
   episode: number
@@ -64,9 +89,16 @@ interface GTMStore {
   isTimelinePlaying: boolean
   timelineSpeed: Speed
 
+  // Benchmark leaderboard
+  benchmarkRuns: BenchmarkRun[]
+  benchmarkPanelOpen: boolean
+  currentModel: string
+  currentProvider: string
+
   // UI state
   speechBubbles: SpeechBubble[]
   coordArrows: CoordArrow[]
+  activeCollaborations: Collaboration[]
   wsConnected: boolean
   isLoading: boolean
   lastError: string | null
@@ -85,6 +117,8 @@ interface GTMStore {
   setError: (e: string | null) => void
   clearBubble: (agentId: AgentId) => void
   clearArrow: (from: AgentId, to: AgentId) => void
+  addCollaboration: (collab: Collaboration) => void
+  updateCollaborations: (deltaTime: number) => void
   setViewMode: (mode: ViewMode) => void
   togglePanel: (panel: keyof PanelVisibility) => void
   toggleTheme: () => void
@@ -93,6 +127,10 @@ interface GTMStore {
   setTimelinePlaying: (v: boolean) => void
   setTimelineSpeed: (s: Speed) => void
   clearHistory: () => void
+
+  addBenchmarkRun: (run: BenchmarkRun) => void
+  toggleBenchmarkPanel: () => void
+  setCurrentModel: (model: string, provider: string) => void
 }
 
 const DEFAULT_AGENT = (id: AgentId): GTMAgent => ({
@@ -169,12 +207,19 @@ export const useStore = create<GTMStore>((set, get) => ({
   lastProcessedStep: -1,
   speechBubbles: [],
   coordArrows: [],
+  activeCollaborations: [],
   wsConnected: false,
   isLoading: false,
   lastError: null,
   theme: (typeof window !== 'undefined' && localStorage.getItem('theme') === 'dark') ? 'dark' : 'light',
   viewMode: 'tabular',
   panelVisibility: { rightSidebar: false, bottomPanel: true },
+  benchmarkRuns: (typeof window !== 'undefined' && localStorage.getItem('benchmarkRuns'))
+    ? JSON.parse(localStorage.getItem('benchmarkRuns')!)
+    : [],
+  benchmarkPanelOpen: false,
+  currentModel: 'unknown',
+  currentProvider: 'bedrock',
 
   applyStepResult: (result) => set((state) => {
     const stepKey = result.state.step
@@ -211,6 +256,31 @@ export const useStore = create<GTMStore>((set, get) => ({
       target: result.target || '',
     }
 
+    // Record benchmark run when episode completes or every 10 steps
+    let newBenchmarkRuns = state.benchmarkRuns
+    if (fullState.done || (fullState.step > 0 && fullState.step % 10 === 0)) {
+      const run: BenchmarkRun = {
+        id: `${state.currentModel}-${fullState.episode}-${fullState.step}`,
+        modelName: state.currentModel,
+        provider: state.currentProvider,
+        steps: fullState.step,
+        totalReward: fullState.global_reward,
+        isComplete: fullState.done,
+        revenue: fullState.kpis.total_revenue,
+        conversionRate: fullState.kpis.conversion_rate,
+        featuresShipped: fullState.kpis.features_shipped,
+        contentPublished: fullState.kpis.content_published,
+        npsScore: fullState.kpis.nps_score,
+        timestamp: now,
+      }
+      const existing = newBenchmarkRuns.findIndex(r => r.modelName === run.modelName && r.provider === run.provider)
+      const updated = existing >= 0
+        ? newBenchmarkRuns.map((r, i) => i === existing ? run : r)
+        : [...newBenchmarkRuns, run]
+      newBenchmarkRuns = [...updated].sort((a, b) => b.totalReward - a.totalReward).slice(0, 20)
+      if (typeof window !== 'undefined') localStorage.setItem('benchmarkRuns', JSON.stringify(newBenchmarkRuns))
+    }
+
     return {
       episode: fullState.episode,
       step: fullState.step,
@@ -235,6 +305,7 @@ export const useStore = create<GTMStore>((set, get) => ({
       speechBubbles: newBubbles,
       coordArrows: newArrows,
       stateHistory: [...state.stateHistory, snapshot],
+      benchmarkRuns: newBenchmarkRuns,
     }
   }),
 
@@ -280,6 +351,22 @@ export const useStore = create<GTMStore>((set, get) => ({
     coordArrows: s.coordArrows.filter(a => !(a.from === from && a.to === to)),
   })),
 
+  addCollaboration: (collab) => set(s => ({
+    activeCollaborations: [...s.activeCollaborations, collab],
+  })),
+
+  updateCollaborations: (deltaTime) => set(s => {
+    const now = Date.now()
+    return {
+      activeCollaborations: s.activeCollaborations
+        .map(c => ({
+          ...c,
+          active: now - c.startTime < c.duration,
+        }))
+        .filter(c => c.active),
+    }
+  }),
+
   setViewMode: (mode) => set({
     viewMode: mode,
     panelVisibility: (mode === 'playground' || mode === '3d' || mode === '4d')
@@ -306,4 +393,20 @@ export const useStore = create<GTMStore>((set, get) => ({
   setTimelinePlaying: (v) => set({ isTimelinePlaying: v }),
   setTimelineSpeed: (s) => set({ timelineSpeed: s }),
   clearHistory: () => set({ stateHistory: [], timelineStep: null, isTimelinePlaying: false }),
+
+  addBenchmarkRun: (run) => set(s => {
+    // Replace existing run for same model or append
+    const existing = s.benchmarkRuns.findIndex(r => r.modelName === run.modelName && r.provider === run.provider)
+    const updated = existing >= 0
+      ? s.benchmarkRuns.map((r, i) => i === existing ? run : r)
+      : [...s.benchmarkRuns, run]
+    // Keep top 20 by totalReward
+    const sorted = [...updated].sort((a, b) => b.totalReward - a.totalReward).slice(0, 20)
+    if (typeof window !== 'undefined') localStorage.setItem('benchmarkRuns', JSON.stringify(sorted))
+    return { benchmarkRuns: sorted }
+  }),
+
+  toggleBenchmarkPanel: () => set(s => ({ benchmarkPanelOpen: !s.benchmarkPanelOpen })),
+
+  setCurrentModel: (model, provider) => set({ currentModel: model, currentProvider: provider }),
 }))

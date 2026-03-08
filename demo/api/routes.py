@@ -95,6 +95,34 @@ async def get_conversations():
     return {"conversations": bridge.get_conversations()}
 
 
+@router.get("/api/config")
+async def get_config():
+    bridge = _get_bridge()
+    return {
+        "provider": getattr(bridge, "provider", "bedrock"),
+        "model": getattr(bridge, "model", "unknown"),
+    }
+
+
+class ReconfigureRequest(BaseModel):
+    model: str
+    provider: str = "bedrock"
+
+
+@router.post("/api/reconfigure")
+async def reconfigure(req: ReconfigureRequest):
+    global _bridge
+    import sys as _sys
+    _main = _sys.modules.get("__main__")
+    bc = getattr(_main, "bridge_config", None)
+    if bc is not None:
+        bc["model"] = req.model
+        bc["provider"] = req.provider
+    # Destroy current bridge so next reset picks up new model
+    _bridge = None
+    return {"provider": req.provider, "model": req.model, "status": "reconfigured"}
+
+
 @router.get("/api/scenarios")
 async def list_scenarios():
     # Real env has no discrete scenarios; return empty for compatibility

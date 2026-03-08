@@ -1,0 +1,28 @@
+[    1063ms] [WARNING] WebSocket connection to 'ws://localhost:8080/ws/live' failed: WebSocket is closed before the connection is established. @ http://localhost:5176/src/hooks/useWebSocket.ts:50
+[    1105ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[    1105ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[    1106ms] [WARNING] WebSocket connection to 'ws://localhost:8080/ws/live' failed: WebSocket is closed before the connection is established. @ http://localhost:5176/src/hooks/useWebSocket.ts:36
+[    1114ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/state:0
+[    1114ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[    1114ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/config:0
+[    3433ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5176/api/state:0
+[    3462ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    3476ms] TypeError: graphics.fillStyle is not a function
+    at OfficeSceneV2.drawOffice (http://localhost:5176/src/game/OfficeSceneV2.ts:62:16)
+    at OfficeSceneV2.create (http://localhost:5176/src/game/OfficeSceneV2.ts:47:10)
+    at SceneManager2.create (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:110813:36)
+    at SceneManager2.loadComplete (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:110744:26)
+    at LoaderPlugin2.emit (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:97:45)
+    at LoaderPlugin2.loadComplete (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:67085:26)
+    at LoaderPlugin2.fileProcessComplete (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:67061:28)
+    at ImageFile2.onProcessComplete (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:66290:33)
+    at data.onload (http://localhost:5176/node_modules/.vite/deps/phaser.js?v=bc337ecb:69314:29)
+[    5437ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    5467ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    7440ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    7470ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    9444ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[    9473ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[   11447ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[   11476ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12
+[   13452ms] [ERROR] WebSocket connection to 'ws://localhost:8080/ws/live' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5176/src/hooks/useWebSocket.ts:12

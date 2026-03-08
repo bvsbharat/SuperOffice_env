@@ -10,9 +10,11 @@ import { TimelineView } from './components/TimelineView'
 import { EpisodeControls } from './components/EpisodeControls'
 import { RewardPanel } from './components/RewardPanel'
 import { ViewToggle } from './components/ViewToggle'
+import { ModelSelector } from './components/ModelSelector'
 import { PlaygroundView } from './components/PlaygroundView'
 import { ThreeDView } from './components/ThreeDView'
 import { FourDView } from './components/fourd/FourDView'
+import { BenchmarkPanel } from './components/BenchmarkPanel'
 import type { AgentId } from './types'
 import { AGENT_ORDER, PHASE_COLORS } from './types'
 
@@ -41,6 +43,8 @@ export default function App() {
   const toggleTheme = useStore(s => s.toggleTheme)
   const panelVisibility = useStore(s => s.panelVisibility)
   const togglePanel = useStore(s => s.togglePanel)
+  const benchmarkRuns = useStore(s => s.benchmarkRuns)
+  const toggleBenchmarkPanel = useStore(s => s.toggleBenchmarkPanel)
 
   const [rightTab, setRightTab] = useState<'dashboard' | 'agents' | 'rewards'>('dashboard')
 
@@ -66,6 +70,10 @@ export default function App() {
 
         <ViewToggle />
 
+        <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
+
+        <ModelSelector />
+
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
@@ -90,13 +98,40 @@ export default function App() {
           <span>Turn <span style={{ color: 'var(--color-text-secondary)' }}>{turn}</span></span>
         </div>
 
-        {lastError && (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-[9px]" style={{ color: '#ef4444' }}>{lastError}</span>
-            <button onClick={() => setError(null)} style={{ color: '#f87171' }}>x</button>
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {lastError && (
+            <>
+              <span className="text-[9px]" style={{ color: '#ef4444' }}>{lastError}</span>
+              <button onClick={() => setError(null)} style={{ color: '#f87171' }}>x</button>
+            </>
+          )}
+
+          {/* Leaderboard button */}
+          <button
+            onClick={toggleBenchmarkPanel}
+            className="relative flex items-center gap-1.5 px-2 py-1 rounded transition-colors"
+            style={{
+              background: 'var(--color-card-bg)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-secondary)',
+            }}
+            title="Model Leaderboard"
+          >
+            <span className="text-sm leading-none">🏆</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Leaderboard</span>
+            {benchmarkRuns.length > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[8px] font-bold px-0.5"
+                style={{ background: '#6366f1', color: '#fff' }}
+              >
+                {benchmarkRuns.length}
+              </span>
+            )}
+          </button>
+        </div>
       </header>
+
+      <BenchmarkPanel />
 
       {viewMode === 'playground' ? (
         <PlaygroundView />
