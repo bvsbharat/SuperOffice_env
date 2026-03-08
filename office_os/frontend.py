@@ -291,6 +291,7 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
 def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                   provider: str = "anthropic", aws_region: str = "us-east-1",
                   speed: float = 0.5, art_train: bool = False,
+                  art_only: bool = False, art_model: str = "Qwen/Qwen2.5-3B-Instruct",
                   art_base_model: str = "Qwen/Qwen2.5-3B-Instruct",
                   art_train_every: int = 3,
                   art_backend: str = "serverless",
@@ -303,6 +304,17 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
     logger.info(f"Creating agents: model={model}, provider={provider}, region={aws_region}")
     agents = {role: LLMAgent(role=role, model=model, provider=provider, aws_region=aws_region)
               for role in AGENT_ROLES}
+
+    # ART-only mode: point all agents at the Northflank vLLM endpoint from the start
+    if art_only and northflank_endpoint:
+        vllm_base_url = northflank_endpoint.rstrip("/") + "/v1"
+        for role, agent in agents.items():
+            agent.set_art_endpoint(
+                base_url=vllm_base_url,
+                api_key=northflank_api_key or "dummy",
+                model_name=art_model,
+            )
+        logger.info(f"ART-only mode: all agents using {vllm_base_url} with model {art_model}")
 
     action_log = []
     message_log = []
@@ -551,12 +563,16 @@ def main():
     # ART training options
     parser.add_argument("--art-train", action="store_true",
                         help="Enable ART training (fine-tune models during simulation)")
+    parser.add_argument("--art-only", action="store_true",
+                        help="Use ART model on Northflank for ALL inference (no Claude needed)")
+    parser.add_argument("--art-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
+                        help="Model name on the vLLM endpoint (default: Qwen/Qwen2.5-3B-Instruct)")
     parser.add_argument("--art-base-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
                         help="Base model for ART training (default: Qwen/Qwen2.5-3B-Instruct)")
     parser.add_argument("--art-train-every", type=int, default=3,
                         help="Train every N simulation days (default: 3)")
     parser.add_argument("--art-backend", type=str, default="serverless",
-                        choices=["serverless", "local", "disabled"],
+                        choices=["serverless", "local", "remote", "disabled"],
                         help="ART backend: serverless (W&B), local (Northflank GPU), disabled")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank vLLM inference endpoint URL")
@@ -565,29 +581,39 @@ def main():
 
     args = parser.parse_args()
 
-    provider = "bedrock" if args.bedrock else "anthropic"
-    if not args.bedrock and os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
-        provider = "bedrock"
-
-    if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-        console.print("[red]ANTHROPIC_API_KEY not set. Use --bedrock or set the key.[/]")
-        sys.exit(1)
-
-    if provider == "bedrock":
-        has_creds = os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
-        if not has_creds:
-            console.print("[red]AWS credentials not found for Bedrock.[/]")
-            sys.exit(1)
-        # Auto-convert Anthropic model IDs to Bedrock format
-        if not args.model.startswith("us.") and not args.model.startswith("anthropic."):
-            args.model = f"us.anthropic.{args.model}-v1:0"
-        console.print(f"[dim]Using Bedrock ({args.aws_region})[/]")
-
     # Resolve Northflank from env if not passed via CLI
     nf_endpoint = args.northflank_endpoint or os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", "")
     nf_api_key = args.northflank_api_key or os.environ.get("NORTHFLANK_API_KEY", "")
 
-    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.model} | Days: {args.days}")
+    # ART-only mode: use Northflank vLLM for all inference, no Claude needed
+    if args.art_only:
+        if not nf_endpoint:
+            console.print("[red]--art-only requires --northflank-endpoint or NORTHFLANK_INFERENCE_ENDPOINT in .env[/]")
+            sys.exit(1)
+        provider = "art"  # Special provider flag
+        console.print(f"[bold cyan]ART-only mode:[/] Using vLLM on Northflank for all agents")
+        console.print(f"[dim]Endpoint: {nf_endpoint}[/]")
+        console.print(f"[dim]Model: {args.art_model}[/]")
+    else:
+        provider = "bedrock" if args.bedrock else "anthropic"
+        if not args.bedrock and os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
+            provider = "bedrock"
+
+        if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+            console.print("[red]ANTHROPIC_API_KEY not set. Use --bedrock, --art-only, or set the key.[/]")
+            sys.exit(1)
+
+        if provider == "bedrock":
+            has_creds = os.environ.get("AWS_ACCESS_KEY_ID") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+            if not has_creds:
+                console.print("[red]AWS credentials not found for Bedrock.[/]")
+                sys.exit(1)
+            # Auto-convert Anthropic model IDs to Bedrock format
+            if not args.model.startswith("us.") and not args.model.startswith("anthropic."):
+                args.model = f"us.anthropic.{args.model}-v1:0"
+            console.print(f"[dim]Using Bedrock ({args.aws_region})[/]")
+
+    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.art_model if args.art_only else args.model} | Days: {args.days}")
     if args.art_train:
         console.print(f"[bold cyan]ART Training:[/] {args.art_base_model} | Every {args.art_train_every} days | Backend: {args.art_backend}")
         if nf_endpoint:
@@ -602,6 +628,8 @@ def main():
         aws_region=args.aws_region,
         speed=args.speed,
         art_train=args.art_train,
+        art_only=args.art_only,
+        art_model=args.art_model,
         art_base_model=args.art_base_model,
         art_train_every=args.art_train_every,
         art_backend=args.art_backend,

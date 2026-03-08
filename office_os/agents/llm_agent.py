@@ -290,6 +290,30 @@ class LLMAgent:
             return
 
         memory_text = "\n".join(f"- {m['description']}" for m in memories[:10])
+
+        # Use ART model for reflection if available
+        if self.use_art_model and self._art_endpoint:
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model=self._art_endpoint["model_name"],
+                    max_tokens=256,
+                    messages=[
+                        {"role": "system", "content": "You are a startup agent reflecting on recent events."},
+                        {"role": "user", "content": f"Recent events:\n{memory_text}\n\nProvide 1-3 concise insights as a JSON object with an 'insights' array of strings."},
+                    ],
+                )
+                text = response.choices[0].message.content or ""
+                start = text.find("{")
+                end = text.rfind("}") + 1
+                if start >= 0 and end > start:
+                    data = json.loads(text[start:end])
+                    result = ReflectionOutput.model_validate(data)
+                    self.base.reflect(turn, result.insights)
+                return
+            except Exception as e:
+                logger.debug(f"ART reflection failed for {self.role}: {e}")
+                return
+
         try:
             response = self.client.messages.create(
                 model=self.model,
