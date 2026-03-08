@@ -102,10 +102,32 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
 
         dataset = Dataset.from_list(rows)
 
+        # Collect context from trajectories for context-aware scoring
+        # Extract customer names, feature names, etc. from user messages
+        _context_entities = set()
+        for t in trajectories_data:
+            msg = t.get("user_message", "")
+            # Extract customer names from pipeline sections
+            for line in msg.split("\n"):
+                line = line.strip()
+                if "name" in line.lower() and ":" in line:
+                    _context_entities.add(line.split(":")[-1].strip().strip("'\""))
+                # Pick up known keywords
+                for keyword in ["Acme", "TechStart", "MedFlow", "RetailAI",
+                                "GreenScale", "FinServ", "EduTech", "DataDriven",
+                                "SSO", "compliance", "onboarding", "HIPAA", "API"]:
+                    if keyword.lower() in line.lower():
+                        _context_entities.add(keyword)
+
+        # Average trajectory reward for this batch (used to weight quality)
+        _avg_traj_reward = 0.0
+        if trajectories_data:
+            _avg_traj_reward = sum(t.get("reward", 0) for t in trajectories_data) / len(trajectories_data)
+
         # Reward function that scores EACH generated completion independently.
         # GRPO needs reward variance within a group to produce gradients.
         def score_completion(completions, **kwargs) -> list[float]:
-            """Score each completion based on format quality and action validity."""
+            """Score each completion on format, validity, and quality."""
             rewards = []
             for completion in completions:
                 text = completion[0]["content"] if isinstance(completion, list) else str(completion)
@@ -122,21 +144,55 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
                 except (json.JSONDecodeError, ValueError):
                     pass
 
+                # 2. Clean output — no extra text outside JSON (-0.1)
+                if parsed:
+                    before_json = text[:text.find("{")].strip()
+                    after_json = text[text.rfind("}") + 1:].strip()
+                    if not before_json and not after_json:
+                        score += 0.1  # Bonus for clean JSON-only output
+
                 if parsed and isinstance(parsed, dict):
-                    # 2. Has action_type field? (+0.2)
+                    # 3. Has action_type field? (+0.2)
                     if "action_type" in parsed:
                         score += 0.2
-                        # 3. Valid action_type for this role? (+0.3)
+                        # 4. Valid action_type for this role? (+0.3)
                         if parsed["action_type"] in valid_actions:
                             score += 0.3
-                    # 4. Has reasoning? (+0.1)
-                    if parsed.get("reasoning"):
-                        score += 0.1
-                    # 5. Has target? (+0.1)
-                    if parsed.get("target"):
-                        score += 0.1
+                        else:
+                            score -= 0.2  # Penalty for wrong-role action
 
-                rewards.append(score)
+                    # 5. Reasoning quality (0 to +0.2)
+                    reasoning = parsed.get("reasoning", "")
+                    if reasoning:
+                        words = len(reasoning.split())
+                        if words >= 10:
+                            score += 0.2  # Substantive reasoning
+                        elif words >= 5:
+                            score += 0.1  # Brief but present
+                        else:
+                            score += 0.05  # Minimal
+
+                    # 6. Has non-empty target? (+0.1)
+                    target = parsed.get("target", "")
+                    if target and target != "auto" and len(target) > 1:
+                        score += 0.1
+                        # 7. Target references context entities? (+0.1)
+                        if any(e.lower() in target.lower() for e in _context_entities if len(e) > 2):
+                            score += 0.1
+
+                    # 8. Message field with proper format "role: text"? (+0.1)
+                    message = parsed.get("message", "")
+                    if message and ":" in str(message):
+                        msg_parts = str(message).split(":", 1)
+                        if msg_parts[0].strip().lower() in ["ceo", "dev", "marketing",
+                                                             "sales", "content", "hr"]:
+                            score += 0.1
+
+                    # 9. Has parameters dict? (+0.05)
+                    if isinstance(parsed.get("parameters"), dict) and parsed["parameters"]:
+                        score += 0.05
+
+                rewards.append(max(score, 0.0))
             return rewards
 
         # GRPO config — no vLLM integration (avoids known bugs)
