@@ -1221,6 +1221,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+art = [
+    { name = "httpx" },
+    { name = "openai" },
+]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -1231,12 +1235,14 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40.0" },
     { name = "boto3", specifier = ">=1.42.63" },
     { name = "gspread", specifier = ">=6.0.0" },
+    { name = "httpx", marker = "extra == 'art'", specifier = ">=0.27.0" },
+    { name = "openai", marker = "extra == 'art'", specifier = ">=1.0.0" },
     { name = "openenv-core", extras = ["core"], specifier = ">=0.2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "art"]
 
 [[package]]
 name = "opentelemetry-api"
