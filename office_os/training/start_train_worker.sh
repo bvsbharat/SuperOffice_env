@@ -5,14 +5,18 @@
 
 set -e
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
 VLLM_PORT="${VLLM_PORT:-8080}"
 TRAIN_PORT="${TRAIN_PORT:-8081}"
+HF_REPO="${HF_REPO:-}"
+WANDB_PROJECT="${WANDB_PROJECT:-}"
 
 echo "=== TRL Training Worker ==="
-echo "Model: $BASE_MODEL"
-echo "Train port: $TRAIN_PORT"
-echo "vLLM:  http://localhost:$VLLM_PORT"
+echo "Model:  $BASE_MODEL"
+echo "Train:  port $TRAIN_PORT"
+echo "vLLM:   http://localhost:$VLLM_PORT"
+echo "HF:     ${HF_REPO:-not set}"
+echo "W&B:    ${WANDB_PROJECT:-not set}"
 echo ""
 
 # ── Install dependencies ──────────────────────────────────────────
@@ -20,6 +24,7 @@ echo ">> Installing dependencies..."
 pip install --upgrade pip
 pip install "trl>=0.12" "datasets>=3.0" "peft>=0.13" "accelerate>=1.0" "bitsandbytes>=0.44"
 pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+pip install wandb huggingface_hub
 echo ">> Done."
 echo ""
 
@@ -44,8 +49,13 @@ sleep 1
 # ── Start training worker ─────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo ">> Starting training worker on port $TRAIN_PORT..."
-exec python "$SCRIPT_DIR/train_worker.py" \
-    --port "$TRAIN_PORT" \
+CMD="python $SCRIPT_DIR/train_worker.py \
+    --port $TRAIN_PORT \
     --host 0.0.0.0 \
-    --base-model "$BASE_MODEL" \
-    --vllm-url "http://localhost:$VLLM_PORT"
+    --base-model $BASE_MODEL \
+    --vllm-url http://localhost:$VLLM_PORT"
+
+[ -n "$HF_REPO" ] && CMD="$CMD --hf-repo $HF_REPO"
+[ -n "$WANDB_PROJECT" ] && CMD="$CMD --wandb-project $WANDB_PROJECT"
+
+exec $CMD

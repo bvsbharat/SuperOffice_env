@@ -20,11 +20,11 @@ STAGE_REWARDS: dict[str, dict[str, float]] = {
     "visitor": {"content": 0.5},
     "lead": {"content": 1.0, "marketing": 1.5},
     "qualified": {"sales": 1.0, "hr": 0.3},
-    "demo": {"sales": 1.5, "dev": 0.5},
+    "demo": {"sales": 1.5, "dev": 1.0},
     "proposal": {"sales": 2.0},
     "closed_won": {"sales": 10.0, "content": 2.0, "marketing": 3.0, "dev": 2.0, "ceo": 5.0, "hr": 1.0, "customer": 2.0},
-    "closed_lost": {"sales": -3.0, "marketing": -1.0, "ceo": -2.0},
-    "churned": {"dev": -5.0, "sales": -3.0, "content": -1.0, "marketing": -1.0, "ceo": -3.0, "customer": -5.0},
+    "closed_lost": {"sales": -3.0, "marketing": -1.0, "ceo": -2.0, "hr": -0.5, "content": -0.5},
+    "churned": {"dev": -5.0, "sales": -3.0, "content": -2.0, "marketing": -1.0, "ceo": -3.0, "customer": -5.0, "hr": -1.0},
 }
 
 AGENT_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
@@ -62,6 +62,7 @@ ROLE_ACTIONS: dict[str, list[str]] = {
         "CLOSE_DEAL",
         "FOLLOW_UP",
         "COLLECT_FEEDBACK",
+        "UPDATE_SHEET",
     ],
     "content": [
         "WRITE_BLOG",
@@ -99,7 +100,7 @@ PHASE_TURNS = {
     "planning": 1,
 }
 TURNS_PER_DAY = sum(PHASE_TURNS.values())  # 14
-EPISODE_DAYS = 90
+EPISODE_DAYS = 30
 EPISODE_TURNS = TURNS_PER_DAY * EPISODE_DAYS
 
 # Contract tiers: name -> (duration_months, reward_multiplier)
@@ -114,7 +115,7 @@ CONTRACT_TIERS: dict[str, dict] = {
 class Config:
     """Simulation configuration."""
 
-    initial_budget: float = 15000.0
+    initial_budget: float = 100000.0
     monthly_budget_refresh: float = 10000.0
     initial_traffic: int = 1000
     initial_conversion_rate: float = 0.02
@@ -136,6 +137,8 @@ class Config:
     # Content
     blog_write_turns: int = 3
     case_study_write_turns: int = 4
+    email_write_turns: int = 2
+    docs_write_turns: int = 2
 
     # Costs
     campaign_cost: float = 500.0

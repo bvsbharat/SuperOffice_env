@@ -5,7 +5,7 @@
 
 set -e
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
 VLLM_PORT="${VLLM_PORT:-8080}"
 
 echo "=== vLLM Inference Server ==="
@@ -33,7 +33,7 @@ VLLM_ALLOW_RUNTIME_LORA_UPDATING=True exec python -m vllm.entrypoints.openai.api
     --host 0.0.0.0 \
     --enable-lora \
     --max-loras 2 \
-    --max-lora-rank 64 \
-    --gpu-memory-utilization 0.4 \
+    --max-lora-rank 32 \
+    --gpu-memory-utilization 0.6 \
     --max-model-len 4096 \
     --enforce-eager

@@ -1,8 +1,8 @@
-"""LLM-powered agent using ART-trained models or Claude for structured decisions.
+"""LLM-powered agent using vLLM-served models or Claude for structured decisions.
 
 Modes:
-  1. ART model (OpenAI-compatible endpoint on Northflank GPU) — primary, uses function calling
-  2. Claude (Anthropic API / AWS Bedrock) — alternative mode, uses tool_use
+  1. vLLM model (Qwen + LoRA on Northflank GPU) — primary, uses JSON prompting
+  2. Claude (Anthropic API) — alternative mode
 """
 
 from __future__ import annotations
@@ -12,12 +12,24 @@ import logging
 import os
 from typing import Optional
 
+import tiktoken
 from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
 from .prompts import ROLE_PROMPTS
 
 logger = logging.getLogger(__name__)
+
+# Token counting — cl100k_base approximates Qwen well enough
+_enc = tiktoken.get_encoding("cl100k_base")
+
+# vLLM context budget: 4096 total - 512 output - 50 safety margin
+_MAX_INPUT_TOKENS = 3534
+_OUTPUT_TOKENS = 512
+
+
+def _count_tokens(text: str) -> int:
+    return len(_enc.encode(text))
 
 
 # ── Structured output models ─────────────────────────────────────────
@@ -37,35 +49,20 @@ class ReflectionOutput(BaseModel):
 
 
 def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
-    """Lazy-load the appropriate Anthropic client."""
+    """Lazy-load the Anthropic client."""
     try:
         import anthropic
     except ImportError:
         raise ImportError("anthropic is required. Install with: pip install anthropic")
-
-    if provider == "bedrock":
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        session_token = os.environ.get("AWS_SESSION_TOKEN")
-
-        kwargs = {"aws_region": aws_region}
-        if access_key:
-            kwargs["aws_access_key"] = access_key
-        if secret_key:
-            kwargs["aws_secret_key"] = secret_key
-        if session_token:
-            kwargs["aws_session_token"] = session_token
-
-        return anthropic.AnthropicBedrock(**kwargs)
     return anthropic.Anthropic()
 
 
 def _get_openai_client(base_url: str, api_key: str):
-    """Create an OpenAI-compatible client for ART-trained models."""
+    """Create an OpenAI-compatible client for vLLM."""
     try:
         from openai import OpenAI
     except ImportError:
-        raise ImportError("openai is required for ART models. Install with: pip install openai")
+        raise ImportError("openai is required for vLLM models. Install with: pip install openai")
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
@@ -73,11 +70,11 @@ def _get_openai_client(base_url: str, api_key: str):
 
 class LLMAgent:
     """
-    Agent that uses ART-trained models or Claude for decisions.
+    Agent that uses vLLM-served models or Claude for decisions.
 
     Two separate modes (set at init, no automatic switching):
-      - ART model (OpenAI-compatible on Northflank GPU): set via set_art_endpoint()
-      - Claude (Anthropic/Bedrock): default if no ART endpoint set
+      - vLLM (Northflank GPU): set via set_vllm_endpoint()
+      - Claude (Anthropic): default if no vLLM endpoint set
     """
 
     def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
@@ -91,9 +88,9 @@ class LLMAgent:
         self._client = None
         self._openai_client = None
 
-        # ART model endpoint (set by ARTTrainer after training)
-        self._art_endpoint: dict | None = None  # {base_url, api_key, model_name}
-        self.use_art_model = False
+        # vLLM endpoint config
+        self._vllm_endpoint: dict | None = None  # {base_url, api_key, model_name}
+        self.use_vllm = False
 
         # Import role actions for validation
         from market.config import ROLE_ACTIONS
@@ -102,22 +99,22 @@ class LLMAgent:
         # Track last user message for trajectory collection
         self.last_user_message: str = ""
 
-    def set_art_endpoint(self, base_url: str, api_key: str, model_name: str):
-        """Configure the ART-trained model endpoint (e.g. Northflank GPU vLLM)."""
-        self._art_endpoint = {
+    def set_vllm_endpoint(self, base_url: str, api_key: str, model_name: str):
+        """Configure the vLLM endpoint (e.g. Northflank GPU)."""
+        self._vllm_endpoint = {
             "base_url": base_url,
             "api_key": api_key,
             "model_name": model_name,
         }
         self._openai_client = None
-        self.use_art_model = True
-        logger.info(f"{self.role}: Using ART model at {base_url} ({model_name})")
+        self.use_vllm = True
+        logger.info(f"{self.role}: Using vLLM at {base_url} ({model_name})")
 
-    def clear_art_endpoint(self):
+    def clear_vllm_endpoint(self):
         """Revert to Claude for inference."""
-        self._art_endpoint = None
+        self._vllm_endpoint = None
         self._openai_client = None
-        self.use_art_model = False
+        self.use_vllm = False
 
     @property
     def client(self):
@@ -127,10 +124,10 @@ class LLMAgent:
 
     @property
     def openai_client(self):
-        if self._openai_client is None and self._art_endpoint:
+        if self._openai_client is None and self._vllm_endpoint:
             self._openai_client = _get_openai_client(
-                self._art_endpoint["base_url"],
-                self._art_endpoint["api_key"],
+                self._vllm_endpoint["base_url"],
+                self._vllm_endpoint["api_key"],
             )
         return self._openai_client
 
@@ -142,70 +139,76 @@ class LLMAgent:
         user_msg = self._build_user_message(observation, turn)
         self.last_user_message = user_msg
 
-        # Use whichever mode is active — no fallback between them
-        call_fn = self._call_art_model if self.use_art_model else self._call_structured
-        mode = "ART" if self.use_art_model else "Claude"
+        mode = "vLLM" if self.use_vllm else "Claude"
 
         action = None
-        for attempt in range(5):
+        rejected_actions: list[str] = []
+        max_attempts = 8
+        for attempt in range(max_attempts):
             try:
-                action = call_fn(user_msg)
+                if self.use_vllm:
+                    action = self._call_vllm(user_msg, rejected_actions=rejected_actions)
+                else:
+                    action = self._call_structured(user_msg)
                 if action.action_type not in self._allowed_actions:
-                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying ({attempt+1}/5)...")
+                    rejected_actions.append(action.action_type)
+                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying ({attempt+1}/{max_attempts})...")
                     action = None
                     continue
                 break
             except Exception as e:
-                logger.warning(f"{mode} attempt {attempt+1}/5 for {self.role}: {type(e).__name__}: {e}")
-                import traceback
-                logger.warning(traceback.format_exc())
-                if attempt < 4:
+                logger.warning(f"{mode} attempt {attempt+1}/{max_attempts} for {self.role}: {type(e).__name__}: {e}")
+                if attempt < max_attempts - 1:
                     import time
                     time.sleep(2)
 
+        # Last resort: pick the first allowed action rather than crashing
         if action is None:
-            # Fallback: pick a random valid action instead of crashing
-            import random
-            fallback_action = random.choice(self._allowed_actions)
-            logger.warning(f"{mode} failed after 5 attempts for {self.role}, falling back to random action: {fallback_action}")
+            fallback_action = self._allowed_actions[0]
+            logger.warning(f"{self.role}: all {max_attempts} attempts failed, using fallback action '{fallback_action}'")
             action = AgentAction(
                 action_type=fallback_action,
-                target="",
-                parameters={},
-                reasoning=f"Fallback: {mode} model could not produce a valid action",
+                target="auto",
+                reasoning="Fallback action after failed attempts",
             )
 
         result = action.model_dump()
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
         return result
 
-    def _call_art_model(self, user_msg: str) -> AgentAction:
-        """Call ART-trained model via OpenAI-compatible endpoint (e.g. vLLM on Northflank).
+    def _call_vllm(self, user_msg: str, rejected_actions: list[str] | None = None) -> AgentAction:
+        """Call vLLM model via OpenAI-compatible endpoint.
 
-        Uses plain JSON prompting (no tools/function-calling) for maximum
-        compatibility with vLLM + Qwen models.
+        Uses token-aware priority pruning to fit within the 4096 context window.
         """
-        actions_str = ", ".join(self._allowed_actions)
+        actions_list = "\n".join(f"  - {a}" for a in self._allowed_actions)
         json_instruction = (
-            f"\n\nRespond with ONLY a JSON object (no other text). "
-            f"action_type MUST be one of: {actions_str}\n"
-            f"Format: {{\"action_type\": \"...\", \"target\": \"...\", "
-            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": null}}"
+            f"\n\n## CRITICAL INSTRUCTIONS\n"
+            f"You are the **{self.role}** agent. You can ONLY use these actions:\n"
+            f"{actions_list}\n\n"
+            f"Do NOT use actions from other roles. Any action not listed above is INVALID.\n\n"
+            f"Respond with ONLY a valid JSON object, nothing else:\n"
+            f"{{\"action_type\": \"<one of the actions above>\", \"target\": \"...\", "
+            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": \"role: message\"}}"
         )
 
-        system_content = self.system_prompt + json_instruction
+        if rejected_actions:
+            unique_rejected = list(dict.fromkeys(rejected_actions))
+            json_instruction += (
+                f"\n\nWARNING: These actions are INVALID and were already rejected: "
+                f"{', '.join(unique_rejected)}. Do NOT use them."
+            )
 
-        # Truncate user message if needed to stay within 4096 context window.
-        # Rough estimate: 1 token ≈ 4 chars. Reserve 256 tokens for output.
-        max_input_chars = (4096 - 256) * 4  # ~15360 chars for input
-        system_chars = len(system_content)
-        max_user_chars = max_input_chars - system_chars
-        if len(user_msg) > max_user_chars:
-            user_msg = user_msg[:max_user_chars] + "\n[... truncated for context limit]"
+        system_content = self.system_prompt + json_instruction
+        system_tokens = _count_tokens(system_content)
+        user_budget = _MAX_INPUT_TOKENS - system_tokens
+
+        # Prune user message to fit budget
+        user_msg = self._prune_to_budget(user_msg, user_budget)
 
         response = self.openai_client.chat.completions.create(
-            model=self._art_endpoint["model_name"],
-            max_tokens=256,
+            model=self._vllm_endpoint["model_name"],
+            max_tokens=_OUTPUT_TOKENS,
             temperature=0.7,
             messages=[
                 {"role": "system", "content": system_content},
@@ -244,6 +247,114 @@ class LLMAgent:
         )
         text = response["output"]["message"]["content"][0]["text"]
         return self._parse_text_response(text)
+
+    def _prune_to_budget(self, user_msg: str, token_budget: int) -> str:
+        """Token-aware priority pruning.
+
+        Sections are built in priority order (highest first). If the full
+        message exceeds the budget, lowest-priority sections are dropped
+        one at a time until it fits.
+
+        Priority (high to low):
+          P0: header + KPIs + budget + role-specific context (pipeline/features)
+          P1: shared team memory (last 3 entries)
+          P2: team messages (last 3)
+          P3: active events
+          P4: recent team actions (last 3)
+          P5: role data (compact JSON)
+          P6: current plan
+          P7: reflections
+          P8: call to action
+        """
+        current_tokens = _count_tokens(user_msg)
+        if current_tokens <= token_budget:
+            return user_msg
+
+        logger.info(f"{self.role}: pruning {current_tokens} -> {token_budget} tokens")
+
+        # Split into sections by "## " headers. Keep the header block (P0)
+        # which has no "## " prefix, then each "## " section.
+        lines = user_msg.split("\n")
+        sections: list[tuple[int, str]] = []  # (priority, text)
+
+        current_section_lines: list[str] = []
+        current_priority = 0  # header block = P0
+
+        # Priority map by section header keyword
+        priority_map = {
+            "Your KPIs": 0,
+            "PIPELINE STATUS": 0,
+            "URGENT": 0,
+            "Currently building": 0,
+            "SHIPPED FEATURES": 0,
+            "NO SHIPPED FEATURES": 0,
+            "SHARED TEAM MEMORY": 1,
+            "Team channel": 2,
+            "Active Events": 3,
+            "Recent team actions": 4,
+            "Your role data": 5,
+            "Your current plan": 6,
+            "Your recent reflections": 7,
+            "ALLOWED ACTIONS": 8,
+        }
+
+        def _get_priority(line: str) -> int | None:
+            for keyword, pri in priority_map.items():
+                if keyword in line:
+                    return pri
+            return None
+
+        for line in lines:
+            if line.startswith("## ") or line.startswith(">> ") or line.startswith("!! "):
+                # Save previous section
+                if current_section_lines:
+                    sections.append((current_priority, "\n".join(current_section_lines)))
+                current_section_lines = [line]
+                p = _get_priority(line)
+                current_priority = p if p is not None else 5
+            else:
+                current_section_lines.append(line)
+
+        # Save last section
+        if current_section_lines:
+            sections.append((current_priority, "\n".join(current_section_lines)))
+
+        # Drop sections from lowest priority (highest number) until we fit
+        sections_sorted_by_drop_order = sorted(
+            range(len(sections)),
+            key=lambda i: -sections[i][0],  # highest priority number = drop first
+        )
+
+        dropped = set()
+        for idx in sections_sorted_by_drop_order:
+            assembled = "\n".join(
+                sections[i][1] for i in range(len(sections)) if i not in dropped
+            )
+            if _count_tokens(assembled) <= token_budget:
+                return assembled
+            dropped.add(idx)
+            # Never drop P0 sections (KPIs, pipeline, header)
+            if sections[idx][0] <= 0:
+                dropped.discard(idx)
+                break
+
+        # If still over budget after dropping everything droppable, hard truncate
+        assembled = "\n".join(
+            sections[i][1] for i in range(len(sections)) if i not in dropped
+        )
+        tokens = _count_tokens(assembled)
+        if tokens > token_budget:
+            # Binary search for the right character cutoff
+            lo, hi = 0, len(assembled)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if _count_tokens(assembled[:mid]) <= token_budget:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            assembled = assembled[:lo]
+
+        return assembled
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call the model and parse response into a validated AgentAction.
@@ -309,10 +420,10 @@ class LLMAgent:
 
         memory_text = "\n".join(f"- {m['description']}" for m in memories[:10])
 
-        if self.use_art_model and self._art_endpoint:
+        if self.use_vllm and self._vllm_endpoint:
             try:
                 response = self.openai_client.chat.completions.create(
-                    model=self._art_endpoint["model_name"],
+                    model=self._vllm_endpoint["model_name"],
                     max_tokens=256,
                     messages=[
                         {"role": "system", "content": "You are a startup agent reflecting on recent events."},
@@ -328,7 +439,7 @@ class LLMAgent:
                     self.base.reflect(turn, result.insights)
                 return
             except Exception as e:
-                logger.debug(f"ART reflection failed for {self.role}: {e}")
+                logger.debug(f"vLLM reflection failed for {self.role}: {e}")
                 return
 
         try:
@@ -363,10 +474,15 @@ class LLMAgent:
             logger.debug(f"Reflection failed for {self.role}: {e}")
 
     def _build_user_message(self, obs: dict, turn: int) -> str:
-        """Build the context message sent to the LLM."""
+        """Build the context message sent to the LLM.
+
+        Sections are ordered by priority so _prune_to_budget knows what to
+        drop first (it drops from the bottom up by section priority number).
+        """
         context = self.base.get_context(turn)
         role_data = obs.get("role_data", {})
 
+        # ── P0: Header + KPIs (never dropped) ────────────────────────
         parts = [
             f"=== Day {obs.get('day', '?')} | Phase: {obs.get('phase', '?')} | Turn {turn} ===",
             "",
@@ -377,6 +493,7 @@ class LLMAgent:
             "",
         ]
 
+        # ── P0: Role-specific critical context (never dropped) ────────
         if self.role == "dev":
             in_progress = role_data.get("features_in_progress", [])
             ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
@@ -391,7 +508,7 @@ class LLMAgent:
             pipeline = role_data.get("pipeline", [])
             if pipeline:
                 parts.append(">> PIPELINE STATUS:")
-                for c in pipeline:
+                for c in pipeline[:8]:  # Cap at 8 customers
                     parts.append(f"   {c['name']}: stage={c['stage']}, budget=${c.get('budget', 0):,.0f}, days_since_contact={c.get('days_since_contact', 0)}")
                 parts.append("")
             else:
@@ -406,20 +523,23 @@ class LLMAgent:
                 parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
 
+        # ── P1: Shared team memory (last 3) ───────────────────────────
         shared_mem = role_data.pop("shared_memory", [])
         if shared_mem:
             parts.append("## SHARED TEAM MEMORY (all agents see this)")
-            for entry in shared_mem[-10:]:
+            for entry in shared_mem[-3:]:
                 parts.append(f"  [{entry.get('author', '?')}] ({entry.get('type', '?')}) {entry.get('content', '')}")
             parts.append("")
 
+        # ── P2: Team messages (last 3) ────────────────────────────────
         messages = obs.get("messages", [])
         if messages:
             parts.append("## Team channel (recent messages)")
-            for m in messages:
+            for m in messages[-3:]:
                 parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
             parts.append("")
 
+        # ── P3: Active events ─────────────────────────────────────────
         events = obs.get("events", [])
         if events:
             parts.append("## Active Events")
@@ -427,35 +547,45 @@ class LLMAgent:
                 parts.append(f"  - {e.get('name', '?')}: {e.get('description', '')}")
             parts.append("")
 
+        # ── P4: Recent team actions (last 3) ──────────────────────────
         recent = obs.get("recent_actions", [])
         if recent:
             parts.append("## Recent team actions")
-            for a in recent[-5:]:
+            for a in recent[-3:]:
                 parts.append(f"  [{a.get('agent_id')}] {a.get('action_type')} -> {a.get('detail', '')}")
             parts.append("")
 
+        # ── P5: Role data (compact) ───────────────────────────────────
         if role_data:
+            compact = {}
+            for k, v in role_data.items():
+                if isinstance(v, list) and len(v) > 3:
+                    compact[k] = v[:3]
+                elif isinstance(v, str) and len(v) > 150:
+                    compact[k] = v[:150]
+                else:
+                    compact[k] = v
+            role_str = json.dumps(compact, indent=1, default=str)
+            if len(role_str) > 800:
+                role_str = role_str[:800] + "..."
             parts.append("## Your role data")
-            parts.append(json.dumps(role_data, indent=2, default=str))
+            parts.append(role_str)
             parts.append("")
 
+        # ── P6: Current plan ──────────────────────────────────────────
         if context.get("current_plan"):
             parts.append(f"## Your current plan: {context['current_plan']}")
+
+        # ── P7: Reflections ───────────────────────────────────────────
         reflections = context.get("recent_reflections", [])
         if reflections:
             parts.append("## Your recent reflections")
-            for r in reflections:
+            for r in reflections[:2]:
                 parts.append(f"  - {r}")
             parts.append("")
 
-        # Always show the definitive allowed-action list (use self._allowed_actions
-        # as the ground truth; role_data may not always carry it).
-        allowed = self._allowed_actions
-        parts.append(f"## ALLOWED ACTIONS (you MUST pick one of these exactly):")
-        parts.append(", ".join(allowed))
-        parts.append("")
-
-        parts.append("Pick the HIGHEST IMPACT action from the list above. Use the submit_action tool to respond.")
+        # ── P8: Call to action ────────────────────────────────────────
+        parts.append("Pick the HIGHEST IMPACT action. Respond with JSON only.")
         return "\n".join(parts)
 
     def _summarize_observation(self, obs: dict) -> str:

@@ -1,6 +1,6 @@
-"""ART (Agent Reinforcement Trainer) integration for Office OS."""
+"""Training integration for Office OS — TRL GRPO on Northflank H100."""
 
 from .collector import TrajectoryCollector
-from .trainer import ARTTrainer
+from .trainer import RemoteTrainer
 
-__all__ = ["TrajectoryCollector", "ARTTrainer"]
+__all__ = ["TrajectoryCollector", "RemoteTrainer"]

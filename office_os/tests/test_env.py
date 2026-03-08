@@ -81,17 +81,38 @@ def test_marketing_launch_campaign():
 
 
 def test_content_write_blog():
-    """Test Content Creator writing a blog post."""
+    """Test Content Creator writing a blog post (multi-turn)."""
     env = OfficeOsEnvironment()
     env.reset()
 
+    # Blog requires 3 turns (blog_write_turns=3)
+    # Turn 1: start writing
     obs = env.step(OfficeOsAction(
         agent_id="content",
         action_type="WRITE_BLOG",
         target="10 Tips for Startup Growth",
         parameters={"topic": "growth"},
     ))
+    assert obs.last_action_result["success"] is True
+    assert "Published" not in obs.last_action_result["detail"]
 
+    # Turn 2: continue
+    obs = env.step(OfficeOsAction(
+        agent_id="content",
+        action_type="WRITE_BLOG",
+        target="10 Tips for Startup Growth",
+        parameters={"topic": "growth"},
+    ))
+    assert obs.last_action_result["success"] is True
+    assert "Published" not in obs.last_action_result["detail"]
+
+    # Turn 3: should be published now
+    obs = env.step(OfficeOsAction(
+        agent_id="content",
+        action_type="WRITE_BLOG",
+        target="10 Tips for Startup Growth",
+        parameters={"topic": "growth"},
+    ))
     assert obs.last_action_result["success"] is True
     assert "Published" in obs.last_action_result["detail"]
 
@@ -205,13 +226,14 @@ def test_full_pipeline_rewards():
     env = OfficeOsEnvironment()
     env.reset()
 
-    # Content writes a blog -> should get positive reward
-    obs = env.step(OfficeOsAction(
-        agent_id="content",
-        action_type="WRITE_BLOG",
-        target="Why Our Product Rocks",
-        parameters={"topic": "product"},
-    ))
+    # Content writes a blog (multi-turn: 3 turns for blog)
+    for _ in range(3):
+        obs = env.step(OfficeOsAction(
+            agent_id="content",
+            action_type="WRITE_BLOG",
+            target="Why Our Product Rocks",
+            parameters={"topic": "product"},
+        ))
     # Content should get a non-negative reward for publishing
     assert obs.reward >= 0
 
@@ -258,12 +280,13 @@ def test_contract_tiers():
 
 
 def test_episode_ends():
-    """Test that the episode ends after 90 days."""
+    """Test that the episode ends after EPISODE_DAYS."""
+    from market.config import EPISODE_DAYS
     env = OfficeOsEnvironment()
     env.reset()
 
-    # Fast forward by stepping many times
-    env._market.day = 91
+    # Fast forward past episode end
+    env._market.day = EPISODE_DAYS + 1
     obs = env.step(OfficeOsAction(
         agent_id="dev",
         action_type="REFACTOR",

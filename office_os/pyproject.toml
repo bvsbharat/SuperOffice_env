@@ -36,7 +36,7 @@ art = [
 ]
 # NOTE: art-server deps (openpipe-art[backend], vllm, etc) are installed
 # directly on the Northflank H100 — they conflict with openenv-core's
-# openai version. See training/NORTHFLANK_SETUP.md for install instructions.
+# openai version. See docs/northflank-h100-setup.md for install instructions.
 
 [project.scripts]
 # Server entry point - enables running via: uv run --project . server

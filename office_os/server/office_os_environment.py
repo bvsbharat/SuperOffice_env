@@ -53,11 +53,12 @@ class OfficeOsEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self):
+    def __init__(self, scenario: str = "baseline"):
+        self._scenario = scenario
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial()
+        self._market = MarketState.initial(scenario=scenario)
         self._simulator = MarketSimulator(self._market)
-        self._events = EventEngine()
+        self._events = EventEngine(scenario_name=scenario)
         self._rewards = RewardCalculator()
         self._sheets = GoogleSheetsSync()
         self._sheets.setup()
@@ -65,8 +66,9 @@ class OfficeOsEnvironment(Environment):
     def reset(self) -> OfficeOsObservation:
         """Reset the environment to day 1 of a new startup quarter."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial()
+        self._market = MarketState.initial(scenario=self._scenario)
         self._simulator = MarketSimulator(self._market)
+        self._events = EventEngine(scenario_name=self._scenario)
         self._rewards = RewardCalculator()
         self._rewards.snapshot(self._market)
 
@@ -133,9 +135,9 @@ class OfficeOsEnvironment(Environment):
             action_result=action_result,
         )
 
-        # Google Sheets sync: dashboard + customers on every step
-        self._sheets.update_dashboard(self._market)
-        self._sheets.update_customers(self._market)
+        # Sync sheets if sales agent triggered UPDATE_SHEET
+        if action_result.get("_trigger_sheets_sync"):
+            self.sync_sheets()
 
         # Create invoice sheets for any newly closed deals
         for customer in self._market.customers:
@@ -152,6 +154,11 @@ class OfficeOsEnvironment(Environment):
             done=done,
             action_result=action_result,
         )
+
+    def sync_sheets(self):
+        """Sync current state to Google Sheets (call at end of day)."""
+        self._sheets.update_dashboard(self._market)
+        self._sheets.update_customers(self._market)
 
     @property
     def state(self) -> State:
@@ -331,7 +338,7 @@ class OfficeOsEnvironment(Environment):
 
         elif role == "customer":
             data["shipped_features"] = [
-                {"name": f.name, "description": f.description}
+                {"name": f.name, "description": f.description, "stability": f.stability}
                 for f in self._market.shipped_features()
             ]
             data["product_stability"] = self._market.product_stability
@@ -343,6 +350,21 @@ class OfficeOsEnvironment(Environment):
             ]
             data["deals_won"] = [c.name for c in self._market.customers if c.stage == "closed_won"]
             data["bug_reports"] = self._market.bug_reports[:5]
+            # Customer sees unresolved pain points from pipeline
+            data["unresolved_pain_points"] = [
+                c.pain_point for c in self._market.customers
+                if c.stage not in ("closed_won", "closed_lost", "churned")
+            ][:5]
+            # Customer sees open feature requests that haven't been built
+            data["pending_feature_requests"] = [
+                b["name"] for b in self._market.backlog
+                if b.get("requested_by") == "customer"
+            ]
+            # Competitor pressure signal from events
+            data["competitor_threat"] = any(
+                "competitor" in e.get("name", "").lower()
+                for e in self._market.active_events
+            )
 
         return data
 
