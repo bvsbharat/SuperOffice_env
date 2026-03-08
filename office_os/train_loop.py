@@ -47,6 +47,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress noisy HTTP request logs from httpx/httpcore
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 from agents.llm_agent import LLMAgent
 from market.config import AGENT_ROLES, TURNS_PER_DAY
 from server.office_os_environment import OfficeOsEnvironment
@@ -70,6 +74,7 @@ def run_episode(
     obs = env.reset()
 
     reward_totals = {role: 0.0 for role in AGENT_ROLES}
+    day_rewards = {role: 0.0 for role in AGENT_ROLES}
     turn = 0
     role_index = 0
 
@@ -120,17 +125,21 @@ def run_episode(
         )
 
         reward_totals[role] += obs.reward
+        day_rewards[role] += obs.reward
 
         # Day boundary logging
         if turn % TURNS_PER_DAY == 0:
             kpis = env._market.get_all_kpis()
+            day_reward_str = " ".join(f"{r[:3]}={v:+.1f}" for r, v in day_rewards.items())
             logger.info(
                 f"  [Ep{episode}] Day {obs.day - 1} | "
                 f"Rev=${kpis['total_revenue']:,.0f} | "
                 f"Pipeline=${kpis['pipeline_value']:,.0f} | "
                 f"Features={kpis['features_shipped']} | "
-                f"Content={kpis['content_published']}"
+                f"Content={kpis['content_published']} | "
+                f"Rewards: {day_reward_str}"
             )
+            day_rewards = {role: 0.0 for role in AGENT_ROLES}
 
         # Periodic reflection
         if turn % (10 * len(AGENT_ROLES)) == 0:
