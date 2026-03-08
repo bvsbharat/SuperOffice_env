@@ -440,7 +440,7 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                     for tr in train_results:
                         activity_file.write(f"  {tr['role']}: {tr['status']}")
                         if tr['status'] == 'trained':
-                            activity_file.write(f" (step={tr['step']}, trajs={tr['trajectories']})")
+                            activity_file.write(f" (step={tr.get('step', '?')}, trajs={tr.get('trajectories', tr.get('trajectories_used', '?'))})")
                         elif tr.get('reason'):
                             activity_file.write(f" ({tr['reason']})")
                         activity_file.write("\n")
