@@ -33,6 +33,12 @@ export function RewardPanel() {
   const lineStroke = isDark ? '#ae81ff' : '#6366f1'
 
   const [expandedAgent, setExpandedAgent] = useState<AgentId | null>(null)
+  const [allExpanded, setAllExpanded] = useState(false)
+
+  function toggleExpandAll() {
+    setAllExpanded(v => !v)
+    setExpandedAgent(null)
+  }
   const kpis = useStore(s => s.kpis)
   const pipeline = useStore(s => s.pipeline)
 
@@ -178,6 +184,14 @@ export function RewardPanel() {
         <div className="flex items-center mb-2">
           <span className="text-[9px] uppercase tracking-wider flex-1" style={{ color: 'var(--color-text-faint)' }}>Agent Rewards</span>
           <div className="flex items-center gap-1">
+            {/* Expand / Collapse all agents */}
+            <button
+              onClick={toggleExpandAll}
+              title={allExpanded ? 'Collapse all agents' : 'Expand all agents'}
+              style={{ padding: '2px 6px', fontSize: 9, fontWeight: 600, borderRadius: 3, border: `1px solid ${allExpanded ? '#6366f1' : 'var(--color-border)'}`, background: allExpanded ? '#6366f112' : 'var(--color-card-bg)', color: allExpanded ? '#6366f1' : 'var(--color-text-secondary)', cursor: 'pointer' }}
+            >
+              {allExpanded ? '▴ Collapse' : '▾ Expand'}
+            </button>
             {/* Expand full view */}
             <button
               onClick={() => setFullView(true)}
@@ -243,7 +257,7 @@ export function RewardPanel() {
             const reward = rewardTotals[id] || 0
             const color = agent?.color || 'var(--color-text-faint)'
             const isPositive = reward >= 0
-            const isExpanded = expandedAgent === id
+            const isExpanded = allExpanded || expandedAgent === id
 
             // Action history: action-type messages carry embedded reward from backend
             const agentActions = conversations
@@ -268,7 +282,15 @@ export function RewardPanel() {
                 <button
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors"
                   style={{ background: isExpanded ? `${color}10` : 'var(--color-card-bg)' }}
-                  onClick={() => setExpandedAgent(isExpanded ? null : id as AgentId)}
+                  onClick={() => {
+                    if (allExpanded) {
+                      // Clicking in all-expanded mode collapses all except this one
+                      setAllExpanded(false)
+                      setExpandedAgent(id as AgentId)
+                    } else {
+                      setExpandedAgent(expandedAgent === id ? null : id as AgentId)
+                    }
+                  }}
                 >
                   <img
                     src={agentIconPath(id as AgentId)}
@@ -468,12 +490,12 @@ export function RewardPanel() {
                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.muted, marginBottom: 14 }}>Agent Leaderboard</div>
 
                     {agentStats.map((a, rank) => (
-                      <div key={a.id} style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: C.card, border: `1px solid ${C.border}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <span style={{ fontSize: 15, minWidth: 22 }}>{medals[rank] || `#${rank + 1}`}</span>
-                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: '2px solid rgba(255,255,255,0.15)' }} alt="" />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{a.name}</div>
+                      <div key={a.id} style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: C.card, border: `1px solid ${C.border}`, overflow: 'hidden', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, minWidth: 0 }}>
+                          <span style={{ fontSize: 15, minWidth: 22, flexShrink: 0 }}>{medals[rank] || `#${rank + 1}`}</span>
+                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: '2px solid rgba(255,255,255,0.15)', flexShrink: 0 }} alt="" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
                             <div style={{ fontSize: 9, color: C.muted }}>{a.actions} actions</div>
                           </div>
                           <div style={{ fontSize: 17, fontFamily: 'monospace', fontWeight: 800, color: a.total >= 0 ? C.green : C.red }}>
@@ -500,18 +522,20 @@ export function RewardPanel() {
                         )}
 
                         {/* Best / Worst */}
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6, minWidth: 0, overflow: 'hidden' }}>
                           {a.bestAction && a.bestAction.reward > 0 && (
-                            <div style={{ flex: 1, padding: '4px 7px', borderRadius: 4, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.18)' }}>
+                            <div style={{ flex: 1, minWidth: 0, padding: '4px 7px', borderRadius: 4, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.18)', overflow: 'hidden' }}>
                               <div style={{ fontSize: 7, color: C.green, fontWeight: 700, letterSpacing: '0.08em' }}>BEST</div>
                               <div style={{ fontSize: 9, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{a.bestAction.action}</div>
+                              <div style={{ fontSize: 9, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.bestAction.outcome}</div>
                               <div style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>+{a.bestAction.reward.toFixed(2)}</div>
                             </div>
                           )}
                           {a.worstAction && a.worstAction.reward < 0 && (
-                            <div style={{ flex: 1, padding: '4px 7px', borderRadius: 4, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)' }}>
+                            <div style={{ flex: 1, minWidth: 0, padding: '4px 7px', borderRadius: 4, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)', overflow: 'hidden' }}>
                               <div style={{ fontSize: 7, color: C.red, fontWeight: 700, letterSpacing: '0.08em' }}>WORST</div>
                               <div style={{ fontSize: 9, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{a.worstAction.action}</div>
+                              <div style={{ fontSize: 9, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.worstAction.outcome}</div>
                               <div style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: C.red }}>{a.worstAction.reward.toFixed(2)}</div>
                             </div>
                           )}

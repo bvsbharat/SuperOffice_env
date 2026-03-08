@@ -2,8 +2,7 @@ import { useStore } from '../store/useStore'
 import type { ViewMode } from '../types'
 
 const modes: { key: ViewMode; label: string }[] = [
-  { key: 'playground', label: 'MAP' },
-  { key: '3d', label: '3D' },
+  { key: 'playground', label: '2D' },
   { key: '4d', label: '4D' },
   { key: 'tabular', label: 'DASH' },
 ]

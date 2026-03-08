@@ -12,7 +12,6 @@ import { EpisodeControls } from './components/EpisodeControls'
 import { ViewToggle } from './components/ViewToggle'
 import { ModelSelector } from './components/ModelSelector'
 import { PlaygroundView } from './components/PlaygroundView'
-import { ThreeDView } from './components/ThreeDView'
 import { FourDView } from './components/fourd/FourDView'
 import { BenchmarkPanel } from './components/BenchmarkPanel'
 import type { AgentId } from './types'
@@ -60,10 +59,42 @@ export default function App() {
     <div className="h-screen flex flex-col overflow-hidden select-none" style={{ background: 'var(--color-surface)' }}>
       {/* Header */}
       <header className="shrink-0 h-10 flex items-center px-4 gap-4" style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', backdropFilter: 'blur(18px) saturate(160%)', WebkitBackdropFilter: 'blur(18px) saturate(160%)' }}>
-        <div className="flex items-center gap-2">
-          <span className="text-base">{'\uD83C\uDFE2'}</span>
-          <span className="text-xs font-bold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>SUPEROFFICE GTM</span>
-          <span className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--color-text-faint)' }}>RL Simulation</span>
+        <div className="flex items-center gap-2.5">
+          {/* O2 Logo mark */}
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+            background: '#ffffff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 1px 6px rgba(0,0,0,0.3)',
+            position: 'relative',
+          }}>
+            <span style={{
+              fontSize: 15, fontWeight: 800, color: '#000',
+              letterSpacing: '-1px', lineHeight: 1,
+              fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+            }}>O</span>
+            <span style={{
+              position: 'absolute', bottom: 3, right: 4,
+              fontSize: 8, fontWeight: 700, color: '#000', lineHeight: 1,
+              fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+            }}>2</span>
+          </div>
+          <div className="flex flex-col" style={{ gap: 0 }}>
+            <span style={{
+              fontSize: 13, fontWeight: 700, letterSpacing: '-0.3px',
+              color: 'var(--color-text-primary)', lineHeight: 1.1,
+              fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+            }}>
+              OpenOffice
+            </span>
+            <span style={{
+              fontSize: 8, letterSpacing: '0.06em', color: 'var(--color-text-faint)',
+              textTransform: 'uppercase', lineHeight: 1.2,
+              fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+            }}>
+              RL Simulation
+            </span>
+          </div>
         </div>
 
         <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
@@ -135,8 +166,6 @@ export default function App() {
         {/* View content */}
         {viewMode === 'playground' ? (
           <PlaygroundView />
-        ) : viewMode === '3d' ? (
-          <ThreeDView />
         ) : viewMode === '4d' ? (
           <FourDView />
         ) : (

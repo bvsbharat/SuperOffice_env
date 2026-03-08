@@ -369,7 +369,7 @@ export const useStore = create<GTMStore>((set, get) => ({
 
   setViewMode: (mode) => set({
     viewMode: mode,
-    panelVisibility: (mode === 'playground' || mode === '3d' || mode === '4d')
+    panelVisibility: (mode === 'playground' || mode === '4d')
       ? { rightSidebar: false, bottomPanel: false }
       : { rightSidebar: false, bottomPanel: true },
   }),

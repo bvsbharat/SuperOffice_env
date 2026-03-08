@@ -156,7 +156,7 @@ export const PHASE_COLORS: Record<Phase, string> = {
 export const agentIconPath = (id: AgentId) => `/agents/${id}.png`
 
 export type Theme = 'light' | 'dark'
-export type ViewMode = 'playground' | '3d' | '4d' | 'tabular'
+export type ViewMode = 'playground' | '4d' | 'tabular'
 
 export interface StateSnapshot {
   step: number
