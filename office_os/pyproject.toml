@@ -15,17 +15,13 @@ description = "Office Os environment for OpenEnv"
 requires-python = ">=3.10"
 dependencies = [
     # Core OpenEnv runtime (provides FastAPI server + HTTP client types)
-    # install from github
-    # "openenv-core[core] @ git+https://github.com/meta-pytorch/OpenEnv.git",
     "openenv-core[core]>=0.2.0",
-    # Environment-specific dependencies
-    # Add all dependencies needed for your environment here
-    # Examples:
-    # "numpy>=1.19.0",
-    # "torch>=2.0.0",
-    # "gymnasium>=0.29.0",
-    # "openspiel>=1.0.0",
-    # "smolagents>=1.22.0,<2",
+    # Google Sheets integration (real-world dashboard + invoices)
+    "gspread>=6.0.0",
+    # LLM agent intelligence (Claude API)
+    "anthropic>=0.40.0",
+    "boto3>=1.42.63",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +29,14 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
 ]
+art = [
+    # ART client-side: collect trajectories and send to Northflank for training
+    "openai>=1.0.0",
+    "httpx>=0.27.0",
+]
+# NOTE: art-server deps (openpipe-art[backend], vllm, etc) are installed
+# directly on the Northflank H100 — they conflict with openenv-core's
+# openai version. See training/NORTHFLANK_SETUP.md for install instructions.
 
 [project.scripts]
 # Server entry point - enables running via: uv run --project . server
@@ -41,5 +45,5 @@ server = "office_os.server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["office_os", "office_os.server"]
-package-dir = { "office_os" = ".", "office_os.server" = "server" }
+packages = ["office_os", "office_os.server", "office_os.market", "office_os.agents", "office_os.integrations", "office_os.training"]
+package-dir = { "office_os" = ".", "office_os.server" = "server", "office_os.market" = "market", "office_os.agents" = "agents", "office_os.integrations" = "integrations", "office_os.training" = "training" }

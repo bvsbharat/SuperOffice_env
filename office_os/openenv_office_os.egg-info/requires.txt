@@ -1,0 +1,13 @@
+openenv-core[core]>=0.2.0
+gspread>=6.0.0
+anthropic>=0.40.0
+boto3>=1.42.63
+python-dotenv>=1.0.0
+
+[art]
+openai>=1.0.0
+httpx>=0.27.0
+
+[dev]
+pytest>=8.0.0
+pytest-cov>=4.0.0
