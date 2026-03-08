@@ -22,9 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
+# Auto-detect: if running on Northflank, use localhost (faster, no timeout)
+_is_server = os.path.exists("/home/jovyan") or os.environ.get("NORTHFLANK", "")
 TRAIN_ENDPOINT = os.environ.get(
     "NORTHFLANK_TRAIN_ENDPOINT",
-    "https://training--jupyter-pytorch--ddk86ftkfknr.code.run",
+    "http://localhost:8081" if _is_server else "https://training--jupyter-pytorch--ddk86ftkfknr.code.run",
 )
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_data")
 ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr"]
