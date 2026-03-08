@@ -215,8 +215,152 @@ class LLMAgent:
         text = response.choices[0].message.content or ""
         return self._parse_text_response(text)
 
+    def _is_claude_model(self) -> bool:
+        """Return True if the current model is an Anthropic Claude model."""
+        return "anthropic" in self.model.lower()
+
+    def _call_bedrock_converse(self, user_msg: str) -> AgentAction:
+        """Call non-Claude Bedrock models (Mistral, Qwen, etc.) via boto3 Converse API."""
+        try:
+            import boto3
+        except ImportError:
+            raise ImportError("boto3 is required for non-Claude Bedrock models. Install with: pip install boto3")
+
+        actions_str = ", ".join(self._allowed_actions)
+        system_text = (
+            self.system_prompt +
+            f"\n\nRespond with ONLY a JSON object — no explanation, no markdown fences.\n"
+            f"action_type MUST be exactly one of: {actions_str}\n"
+            f'Format: {{"action_type": "...", "target": "...", "parameters": {{}}, "reasoning": "...", "message": null}}'
+        )
+
+        bedrock = boto3.client("bedrock-runtime", region_name=self.aws_region)
+        response = bedrock.converse(
+            modelId=self.model,
+            system=[{"text": system_text}],
+            messages=[{"role": "user", "content": [{"text": user_msg}]}],
+            inferenceConfig={"maxTokens": 512, "temperature": 0.7},
+        )
+        text = response["output"]["message"]["content"][0]["text"]
+        return self._parse_text_response(text)
+
+    def _prune_to_budget(self, user_msg: str, token_budget: int) -> str:
+        """Token-aware priority pruning.
+
+        Sections are built in priority order (highest first). If the full
+        message exceeds the budget, lowest-priority sections are dropped
+        one at a time until it fits.
+
+        Priority (high to low):
+          P0: header + KPIs + budget + role-specific context (pipeline/features)
+          P1: shared team memory (last 3 entries)
+          P2: team messages (last 3)
+          P3: active events
+          P4: recent team actions (last 3)
+          P5: role data (compact JSON)
+          P6: current plan
+          P7: reflections
+          P8: call to action
+        """
+        current_tokens = _count_tokens(user_msg)
+        if current_tokens <= token_budget:
+            return user_msg
+
+        logger.info(f"{self.role}: pruning {current_tokens} -> {token_budget} tokens")
+
+        # Split into sections by "## " headers. Keep the header block (P0)
+        # which has no "## " prefix, then each "## " section.
+        lines = user_msg.split("\n")
+        sections: list[tuple[int, str]] = []  # (priority, text)
+
+        current_section_lines: list[str] = []
+        current_priority = 0  # header block = P0
+
+        # Priority map by section header keyword
+        priority_map = {
+            "Your KPIs": 0,
+            "PIPELINE STATUS": 0,
+            "URGENT": 0,
+            "Currently building": 0,
+            "SHIPPED FEATURES": 0,
+            "NO SHIPPED FEATURES": 0,
+            "SHARED TEAM MEMORY": 1,
+            "Team channel": 2,
+            "Active Events": 3,
+            "Recent team actions": 4,
+            "Your role data": 5,
+            "Your current plan": 6,
+            "Your recent reflections": 7,
+            "ALLOWED ACTIONS": 8,
+        }
+
+        def _get_priority(line: str) -> int | None:
+            for keyword, pri in priority_map.items():
+                if keyword in line:
+                    return pri
+            return None
+
+        for line in lines:
+            if line.startswith("## ") or line.startswith(">> ") or line.startswith("!! "):
+                # Save previous section
+                if current_section_lines:
+                    sections.append((current_priority, "\n".join(current_section_lines)))
+                current_section_lines = [line]
+                p = _get_priority(line)
+                current_priority = p if p is not None else 5
+            else:
+                current_section_lines.append(line)
+
+        # Save last section
+        if current_section_lines:
+            sections.append((current_priority, "\n".join(current_section_lines)))
+
+        # Drop sections from lowest priority (highest number) until we fit
+        sections_sorted_by_drop_order = sorted(
+            range(len(sections)),
+            key=lambda i: -sections[i][0],  # highest priority number = drop first
+        )
+
+        dropped = set()
+        for idx in sections_sorted_by_drop_order:
+            assembled = "\n".join(
+                sections[i][1] for i in range(len(sections)) if i not in dropped
+            )
+            if _count_tokens(assembled) <= token_budget:
+                return assembled
+            dropped.add(idx)
+            # Never drop P0 sections (KPIs, pipeline, header)
+            if sections[idx][0] <= 0:
+                dropped.discard(idx)
+                break
+
+        # If still over budget after dropping everything droppable, hard truncate
+        assembled = "\n".join(
+            sections[i][1] for i in range(len(sections)) if i not in dropped
+        )
+        tokens = _count_tokens(assembled)
+        if tokens > token_budget:
+            # Binary search for the right character cutoff
+            lo, hi = 0, len(assembled)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if _count_tokens(assembled[:mid]) <= token_budget:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            assembled = assembled[:lo]
+
+        return assembled
+
     def _call_structured(self, user_msg: str) -> AgentAction:
-        """Call Claude and parse response into a validated AgentAction."""
+        """Call the model and parse response into a validated AgentAction.
+
+        Routes non-Claude models to Bedrock Converse API (boto3) since
+        tool_choice is an Anthropic-only feature.
+        """
+        if not self._is_claude_model():
+            return self._call_bedrock_converse(user_msg)
+
         tool_schema = AgentAction.model_json_schema()
         properties = tool_schema.get("properties", {})
 

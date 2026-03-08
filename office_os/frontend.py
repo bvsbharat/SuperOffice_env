@@ -5,6 +5,8 @@ Office OS Terminal Dashboard.
 A rich-based live terminal UI that visualizes the multi-agent simulation
 in real-time. Shows KPIs, customer pipeline, agent actions, and messages.
 
+For web-based visualization, see demo/api/ (FastAPI) + demo/frontend/ (React).
+
 Usage:
     python frontend.py --days 10 --speed 0.3
 """
