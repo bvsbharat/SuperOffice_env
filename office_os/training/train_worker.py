@@ -41,6 +41,8 @@ _global_step: int = 0
 _lock = threading.Lock()
 _vllm_url = "http://localhost:8080"  # vLLM inference server
 _lora_output_dir = "/tmp/office_os_lora"
+_hf_repo = ""       # e.g. "username/office-os-loras"
+_wandb_project = "" # e.g. "office-os"
 
 ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
 
@@ -140,6 +142,19 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         output_dir = os.path.join(_lora_output_dir, role)
         os.makedirs(output_dir, exist_ok=True)
 
+        # W&B logging
+        report_to = "none"
+        run_name = None
+        if _wandb_project:
+            try:
+                import wandb
+                report_to = "wandb"
+                run_name = f"{role}-step{_global_step + 1}"
+                os.environ.setdefault("WANDB_PROJECT", _wandb_project)
+                logger.info(f"W&B logging enabled: project={_wandb_project}, run={run_name}")
+            except ImportError:
+                logger.warning("wandb not installed, skipping W&B logging")
+
         training_args = GRPOConfig(
             output_dir=output_dir,
             use_vllm=False,
@@ -156,7 +171,8 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             optim="adamw_8bit",
             logging_steps=1,
             save_steps=50,
-            report_to="none",
+            report_to=report_to,
+            run_name=run_name,
         )
 
         trainer = GRPOTrainer(
@@ -175,6 +191,30 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         model.save_pretrained(adapter_path)
         tokenizer.save_pretrained(adapter_path)
         logger.info(f"LoRA adapter saved to {adapter_path}")
+
+        # Push to HuggingFace
+        hf_pushed = False
+        if _hf_repo:
+            try:
+                subfolder = f"{role}/step-{_global_step + 1}"
+                model.push_to_hub(_hf_repo, subfolder=subfolder)
+                tokenizer.push_to_hub(_hf_repo, subfolder=subfolder)
+                logger.info(f"Pushed LoRA to HuggingFace: {_hf_repo}/{subfolder}")
+                hf_pushed = True
+            except Exception as e:
+                logger.warning(f"Failed to push to HuggingFace: {e}")
+
+        # Finish W&B run
+        if _wandb_project:
+            try:
+                import wandb
+                if wandb.run:
+                    wandb.run.summary["role"] = role
+                    wandb.run.summary["trajectories"] = len(rows)
+                    wandb.run.summary["hf_pushed"] = hf_pushed
+                    wandb.finish()
+            except Exception:
+                pass
 
         # Hot-load into vLLM
         lora_name = f"office-os-{role}"
@@ -195,6 +235,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             "role_step": _train_steps[role],
             "trajectories_used": len(rows),
             "lora_loaded": loaded,
+            "hf_pushed": hf_pushed,
             "model_name": lora_name if loaded else _base_model,
             "adapter_path": adapter_path,
         }
@@ -317,12 +358,18 @@ def main():
     p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-3B-Instruct")
     p.add_argument("--vllm-url", type=str, default="http://localhost:8080")
     p.add_argument("--lora-dir", type=str, default="/tmp/office_os_lora")
+    p.add_argument("--hf-repo", type=str, default="",
+                   help="HuggingFace repo to push LoRAs (e.g. username/office-os-loras)")
+    p.add_argument("--wandb-project", type=str, default="",
+                   help="Weights & Biases project name for logging")
     args = p.parse_args()
 
-    global _base_model, _vllm_url, _lora_output_dir
+    global _base_model, _vllm_url, _lora_output_dir, _hf_repo, _wandb_project
     _base_model = args.base_model
     _vllm_url = args.vllm_url
     _lora_output_dir = args.lora_dir
+    _hf_repo = args.hf_repo or os.environ.get("HF_REPO", "")
+    _wandb_project = args.wandb_project or os.environ.get("WANDB_PROJECT", "")
 
     logger.info(f"TRL GRPO Training Worker on {args.host}:{args.port}")
     logger.info(f"Base model: {_base_model}")
