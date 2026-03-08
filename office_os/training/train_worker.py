@@ -52,6 +52,51 @@ for role in ALL_ROLES:
     _train_steps[role] = 0
 
 
+def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
+    """Use the local vLLM as an LLM-as-a-judge to score a completion.
+
+    Returns a score from 0.0 to 1.0 based on strategic quality.
+    Falls back to 0.5 (neutral) on any error to avoid blocking training.
+    """
+    actions_str = ", ".join(valid_actions)
+    judge_prompt = (
+        f"You are a judge evaluating an AI agent's action in a startup simulation.\n"
+        f"The agent plays the '{role}' role. Valid actions: {actions_str}\n\n"
+        f"Rate this response on a scale of 1-5:\n"
+        f"1 = Invalid/garbage output\n"
+        f"2 = Valid format but poor strategic choice\n"
+        f"3 = Acceptable action, generic reasoning\n"
+        f"4 = Good action with clear strategic reasoning\n"
+        f"5 = Excellent — right action, specific target, strong reasoning, good team communication\n\n"
+        f"Agent response:\n{text[:500]}\n\n"
+        f"Reply with ONLY a single number (1-5)."
+    )
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "model": _base_model,
+            "messages": [{"role": "user", "content": judge_prompt}],
+            "max_tokens": 8,
+            "temperature": 0.0,
+        }).encode()
+        req = urllib.request.Request(
+            f"{_vllm_url}/v1/chat/completions",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+            reply = result["choices"][0]["message"]["content"].strip()
+            # Extract first digit 1-5
+            for ch in reply:
+                if ch.isdigit() and ch in "12345":
+                    return (int(ch) - 1) / 4.0  # Normalize: 1->0.0, 5->1.0
+        return 0.5
+    except Exception:
+        return 0.5  # Neutral on failure — don't block training
+
+
 def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5) -> dict:
     """Train with TRL GRPO using Unsloth. Saves LoRA and hot-loads into vLLM."""
     global _global_step
@@ -195,6 +240,15 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
                 rewards.append(max(score, 0.0))
             return rewards
 
+        # LLM-as-a-judge reward: uses local vLLM to rate strategic quality
+        def llm_judge_reward(completions, **kwargs) -> list[float]:
+            """Score completions using the local vLLM as a judge."""
+            scores = []
+            for completion in completions:
+                text = completion[0]["content"] if isinstance(completion, list) else str(completion)
+                scores.append(_llm_judge(text, role, valid_actions))
+            return scores
+
         # GRPO config — no vLLM integration (avoids known bugs)
         output_dir = os.path.join(_lora_output_dir, role)
         os.makedirs(output_dir, exist_ok=True)
@@ -236,7 +290,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             model=model,
             args=training_args,
             train_dataset=dataset,
-            reward_funcs=[score_completion],
+            reward_funcs=[score_completion, llm_judge_reward],
             tokenizer=tokenizer,
         )
 
