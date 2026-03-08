@@ -157,6 +157,8 @@ class LLMAgent:
                 break
             except Exception as e:
                 logger.warning(f"{mode} attempt {attempt+1}/5 for {self.role}: {type(e).__name__}: {e}")
+                import traceback
+                logger.warning(traceback.format_exc())
                 if attempt < 4:
                     import time
                     time.sleep(2)
@@ -169,43 +171,31 @@ class LLMAgent:
         return result
 
     def _call_art_model(self, user_msg: str) -> AgentAction:
-        """Call ART-trained model via OpenAI-compatible endpoint (e.g. vLLM on Northflank)."""
-        tool_schema = AgentAction.model_json_schema()
-        properties = tool_schema.get("properties", {})
+        """Call ART-trained model via OpenAI-compatible endpoint (e.g. vLLM on Northflank).
+
+        Uses plain JSON prompting (no tools/function-calling) for maximum
+        compatibility with vLLM + Qwen models.
+        """
+        actions_str = ", ".join(self._allowed_actions)
+        json_instruction = (
+            f"\n\nRespond with ONLY a JSON object (no other text). "
+            f"action_type MUST be one of: {actions_str}\n"
+            f"Format: {{\"action_type\": \"...\", \"target\": \"...\", "
+            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": null}}"
+        )
 
         response = self.openai_client.chat.completions.create(
             model=self._art_endpoint["model_name"],
-            max_tokens=1024,
+            max_tokens=512,
+            temperature=0.7,
             messages=[
-                {"role": "system", "content": self.system_prompt},
+                {"role": "system", "content": self.system_prompt + json_instruction},
                 {"role": "user", "content": user_msg},
             ],
-            tools=[{
-                "type": "function",
-                "function": {
-                    "name": "submit_action",
-                    "description": f"Submit your chosen action. action_type MUST be one of: {', '.join(self._allowed_actions)}",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": ["action_type"],
-                    },
-                },
-            }],
-            tool_choice={"type": "function", "function": {"name": "submit_action"}},
         )
 
-        choice = response.choices[0]
-
-        if choice.message.tool_calls:
-            tc = choice.message.tool_calls[0]
-            data = json.loads(tc.function.arguments)
-            return AgentAction.model_validate(data)
-
-        if choice.message.content:
-            return self._parse_text_response(choice.message.content)
-
-        raise ValueError("No valid action from ART model")
+        text = response.choices[0].message.content or ""
+        return self._parse_text_response(text)
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call Claude and parse response into a validated AgentAction."""
