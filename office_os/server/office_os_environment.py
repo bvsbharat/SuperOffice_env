@@ -333,7 +333,7 @@ class OfficeOsEnvironment(Environment):
 
         elif role == "customer":
             data["shipped_features"] = [
-                {"name": f.name, "description": f.description}
+                {"name": f.name, "description": f.description, "stability": f.stability}
                 for f in self._market.shipped_features()
             ]
             data["product_stability"] = self._market.product_stability
@@ -345,6 +345,21 @@ class OfficeOsEnvironment(Environment):
             ]
             data["deals_won"] = [c.name for c in self._market.customers if c.stage == "closed_won"]
             data["bug_reports"] = self._market.bug_reports[:5]
+            # Customer sees unresolved pain points from pipeline
+            data["unresolved_pain_points"] = [
+                c.pain_point for c in self._market.customers
+                if c.stage not in ("closed_won", "closed_lost", "churned")
+            ][:5]
+            # Customer sees open feature requests that haven't been built
+            data["pending_feature_requests"] = [
+                b["name"] for b in self._market.backlog
+                if b.get("requested_by") == "customer"
+            ]
+            # Competitor pressure signal from events
+            data["competitor_threat"] = any(
+                "competitor" in e.get("name", "").lower()
+                for e in self._market.active_events
+            )
 
         return data
 

@@ -47,6 +47,11 @@ class RewardCalculator:
         # 6. Constraint penalties
         reward += self._constraint_penalties(state, agent_id, action_result)
 
+        # 7. Small shaping reward so most turns aren't zero
+        # Ensures GRPO gets gradient signal even on "maintenance" turns
+        if action_result.get("success", True):
+            reward += 0.1  # Base reward for any successful action
+
         # Take new snapshot for next calculation
         self._prev_kpis = state.get_all_kpis()
 
@@ -71,9 +76,12 @@ class RewardCalculator:
             # Small reward for progressing a build
             elif action == "BUILD_FEATURE" and "remaining" in detail:
                 reward += 0.5
-            # Rewards for maintenance actions
+            # Rewards for maintenance actions — higher for customer-reported bugs
             elif action == "FIX_BUG":
                 reward += 0.8
+                # Empathy bonus: fixing customer-reported bugs shows responsiveness
+                if "customer" in detail.lower() or "escalat" in detail.lower():
+                    reward += 0.5
             elif action == "REFACTOR":
                 reward += 0.5
             elif action == "WRITE_DOCS":
@@ -105,8 +113,15 @@ class RewardCalculator:
             elif action == "RESOLVE_BLOCKER":
                 reward += 1.5
 
+        elif agent_id == "sales":
+            # Empathy bonus: following up on feedback or when satisfaction is low
+            if action == "FOLLOW_UP":
+                reward += 0.3
+            elif action == "COLLECT_FEEDBACK":
+                reward += 0.5
+
         elif agent_id == "customer":
-            # Reward for useful engagement
+            # Reward for realistic customer behavior
             if action == "REFER_LEAD" and "New lead" in detail:
                 reward += 1.0
             elif action == "RENEW_CONTRACT" and "renewed" in detail:
@@ -115,6 +130,12 @@ class RewardCalculator:
                 reward += 0.3
             elif action == "GIVE_FEEDBACK":
                 reward += 0.5
+            # Reward for escalating real issues (drives dev to fix bugs)
+            elif action == "ESCALATE_ISSUE":
+                reward += 0.4
+            # Reward for requesting features (drives product development)
+            elif action == "REQUEST_FEATURE":
+                reward += 0.3
 
         return reward
 
@@ -158,6 +179,25 @@ class RewardCalculator:
             if stability_delta > 0:
                 reward += min(stability_delta * 15.0, 1.5)
 
+        # Customer satisfaction delta — rewards empathy across ALL roles
+        sat_delta = current.get("customer_satisfaction", 0) - prev.get("customer_satisfaction", 0)
+        if sat_delta > 0:
+            # Everyone gets rewarded when customer satisfaction improves
+            reward += sat_delta * 2.0  # e.g. +0.1 satisfaction = +0.2 reward
+        elif sat_delta < 0:
+            # Penalize roles responsible for customer-facing quality
+            if agent_id in ("dev", "sales", "ceo"):
+                reward += sat_delta * 1.5  # e.g. -0.1 satisfaction = -0.15 penalty
+
+        # NPS improvement — reward for turning detractors into promoters
+        nps_delta = current.get("nps_score", 0) - prev.get("nps_score", 0)
+        if nps_delta > 0:
+            reward += min(nps_delta / 20.0, 0.5)  # +20 NPS = +0.5 reward
+        elif nps_delta < -5:
+            # Significant NPS drop penalizes customer-facing roles
+            if agent_id in ("dev", "sales", "customer"):
+                reward -= 0.3
+
         return reward
 
     def _collaboration_bonus(self, state: MarketState, agent_id: str, action_result: dict) -> float:
@@ -193,6 +233,22 @@ class RewardCalculator:
         if agent_id == "marketing":
             # Marketing promoting content = collaboration with Content
             if state.content_pieces and "campaign" in action_result.get("action_type", "").lower():
+                bonus += 0.5
+
+        # Churn prevention bonus — reward any role for acting when satisfaction is low
+        if state.customer_satisfaction < 0.4:
+            action = action_result.get("action_type", "")
+            # Dev fixing bugs when customers are unhappy
+            if agent_id == "dev" and action in ("FIX_BUG", "REFACTOR"):
+                bonus += 0.5
+            # Sales following up or collecting feedback during low satisfaction
+            elif agent_id == "sales" and action in ("FOLLOW_UP", "COLLECT_FEEDBACK"):
+                bonus += 0.5
+            # CEO reviewing strategy or sending directives during crisis
+            elif agent_id == "ceo" and action in ("REVIEW_STRATEGY", "SEND_DIRECTIVE"):
+                bonus += 0.3
+            # HR resolving blockers during crisis
+            elif agent_id == "hr" and action == "RESOLVE_BLOCKER":
                 bonus += 0.5
 
         return bonus

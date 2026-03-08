@@ -327,7 +327,7 @@ class MarketSimulator:
             tier_key = "monthly"
         tier = CONTRACT_TIERS[tier_key]
 
-        # Close probability based on shipped features + content touchpoints
+        # Close probability based on shipped features + content + satisfaction
         # Longer contracts are harder to close
         base_prob = 0.4 - (tier["months"] - 1) * 0.015
         shipped = self.state.shipped_features()
@@ -336,6 +336,18 @@ class MarketSimulator:
             base_prob += min(0.3, len(shipped) * 0.1)
         if customer.content_touchpoints:
             base_prob += 0.1 * min(len(customer.content_touchpoints), 3)
+        # Customer satisfaction affects willingness to buy
+        if self.state.customer_satisfaction < 0.4:
+            base_prob -= 0.15
+        elif self.state.customer_satisfaction > 0.7:
+            base_prob += 0.1
+        # Unresolved objections reduce close probability
+        if customer.objections:
+            base_prob -= 0.05 * len(customer.objections)
+        # Low stability makes enterprise customers cautious
+        if self.state.product_stability < 0.6 and customer.company_size == "enterprise":
+            base_prob -= 0.2
+        base_prob = max(0.05, min(0.9, base_prob))  # Clamp to [5%, 90%]
 
         if self.state._rng.random() < base_prob:
             customer.previous_stage = customer.stage
