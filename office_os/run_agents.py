@@ -47,7 +47,7 @@ for _d in [os.path.dirname(os.path.abspath(__file__)),
                     os.environ.setdefault(key.strip(), value.strip())
 
 from agents.llm_agent import LLMAgent
-from market.config import AGENT_ROLES, TURNS_PER_DAY
+from market.config import AGENT_ROLES, EPISODE_DAYS, TURNS_PER_DAY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,7 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_local(days: int = 90, model: str = "claude-sonnet-4-20250514",
+def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
               reflect_every: int = 10, provider: str = "anthropic", aws_region: str = "us-east-1"):
     """Run the simulation locally without a server."""
     from server.office_os_environment import OfficeOsEnvironment
@@ -151,7 +151,7 @@ def run_local(days: int = 90, model: str = "claude-sonnet-4-20250514",
             logger.info(f"  - {r}")
 
 
-def run_server(server_url: str, days: int = 90, model: str = "claude-sonnet-4-20250514",
+def run_server(server_url: str, days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
                provider: str = "anthropic", aws_region: str = "us-east-1"):
     """Run agents against the environment server via WebSocket."""
     from client import OfficeOsEnv
@@ -219,7 +219,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run Office OS multi-agent simulation")
     parser.add_argument("--server", type=str, help="Server URL (e.g. http://localhost:8000)")
     parser.add_argument("--local", action="store_true", help="Run locally without server")
-    parser.add_argument("--days", type=int, default=90, help="Number of days to simulate (default: 90)")
+    parser.add_argument("--days", type=int, default=EPISODE_DAYS, help=f"Number of days to simulate (default: {EPISODE_DAYS})")
     parser.add_argument("--model", type=str, default="claude-sonnet-4-20250514", help="Claude model to use")
     parser.add_argument("--reflect-every", type=int, default=10, help="Reflect every N turns per agent")
     parser.add_argument("--bedrock", action="store_true", help="Use AWS Bedrock instead of Anthropic API")

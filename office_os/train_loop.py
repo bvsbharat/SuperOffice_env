@@ -51,6 +51,7 @@ from agents.llm_agent import LLMAgent
 from market.config import AGENT_ROLES, TURNS_PER_DAY
 from server.office_os_environment import OfficeOsEnvironment
 from models import OfficeOsAction
+from market.config import EPISODE_DAYS
 from training.collector import TrajectoryCollector
 from training.trainer import RemoteTrainer
 
@@ -62,7 +63,7 @@ def run_episode(
     scenario: str,
     agents: dict[str, LLMAgent],
     collector: TrajectoryCollector,
-    days: int = 90,
+    days: int = EPISODE_DAYS,
 ) -> dict:
     """Run a single 90-day episode and collect trajectories. Returns summary."""
     env = OfficeOsEnvironment(scenario=scenario)
@@ -166,8 +167,8 @@ def main():
     parser = argparse.ArgumentParser(description="Office OS Training Loop")
     parser.add_argument("--episodes", type=int, default=10,
                         help="Number of 90-day episodes to run (default: 10)")
-    parser.add_argument("--days", type=int, default=90,
-                        help="Days per episode (default: 90)")
+    parser.add_argument("--days", type=int, default=EPISODE_DAYS,
+                        help=f"Days per episode (default: {EPISODE_DAYS})")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
                         help="Model name for vLLM inference")
     parser.add_argument("--northflank-endpoint", type=str, default="",

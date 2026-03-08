@@ -280,12 +280,13 @@ def test_contract_tiers():
 
 
 def test_episode_ends():
-    """Test that the episode ends after 90 days."""
+    """Test that the episode ends after EPISODE_DAYS."""
+    from market.config import EPISODE_DAYS
     env = OfficeOsEnvironment()
     env.reset()
 
-    # Fast forward by stepping many times
-    env._market.day = 91
+    # Fast forward past episode end
+    env._market.day = EPISODE_DAYS + 1
     obs = env.step(OfficeOsAction(
         agent_id="dev",
         action_type="REFACTOR",

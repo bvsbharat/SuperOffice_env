@@ -99,7 +99,7 @@ PHASE_TURNS = {
     "planning": 1,
 }
 TURNS_PER_DAY = sum(PHASE_TURNS.values())  # 14
-EPISODE_DAYS = 90
+EPISODE_DAYS = 30
 EPISODE_TURNS = TURNS_PER_DAY * EPISODE_DAYS
 
 # Contract tiers: name -> (duration_months, reward_multiplier)
@@ -114,7 +114,7 @@ CONTRACT_TIERS: dict[str, dict] = {
 class Config:
     """Simulation configuration."""
 
-    initial_budget: float = 15000.0
+    initial_budget: float = 100000.0
     monthly_budget_refresh: float = 10000.0
     initial_traffic: int = 1000
     initial_conversion_rate: float = 0.02

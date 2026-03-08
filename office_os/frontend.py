@@ -48,7 +48,7 @@ from rich.text import Text
 from rich.columns import Columns
 
 from agents.llm_agent import LLMAgent
-from market.config import AGENT_ROLES, CONTRACT_TIERS, TURNS_PER_DAY
+from market.config import AGENT_ROLES, CONTRACT_TIERS, EPISODE_DAYS, TURNS_PER_DAY
 from server.office_os_environment import OfficeOsEnvironment
 from models import OfficeOsAction
 
@@ -93,7 +93,7 @@ def build_header(market, turn):
     phase = market.phase.replace("_", " ").title()
     text = Text()
     text.append("OFFICE OS", style="bold white")
-    text.append(f"  Day {day}/90", style="bright_white")
+    text.append(f"  Day {day}/{EPISODE_DAYS}", style="bright_white")
     text.append(f"  |  {phase}", style="bright_cyan")
     text.append(f"  |  Turn {turn}", style="dim")
     return Panel(text, style="blue", height=3)
@@ -281,7 +281,7 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
     return layout
 
 
-def run_dashboard(days: int = 90, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
+def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
                   speed: float = 0.5, train_every: int = 3,
                   northflank_endpoint: str = "", scenario: str = "baseline"):
     """Run the simulation with a live terminal dashboard and remote training."""
@@ -532,7 +532,7 @@ def build_final_summary(market, reward_totals, agents, turn):
 
 def main():
     parser = argparse.ArgumentParser(description="Office OS Terminal Dashboard")
-    parser.add_argument("--days", type=int, default=90, help="Days to simulate (default: 90)")
+    parser.add_argument("--days", type=int, default=EPISODE_DAYS, help=f"Days to simulate (default: {EPISODE_DAYS})")
     parser.add_argument("--speed", type=float, default=0.5, help="Seconds between turns (default: 0.5)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
                         help="Model name on the vLLM endpoint")
