@@ -32,9 +32,11 @@ Office OS is a multi-agent simulation built on Meta's [OpenEnv](https://github.c
                     └────────────────────┼──────────────────────┘
                                          │
                               ┌──────────▼──────────┐
-                              │  Claude / Bedrock   │
-                              │  (or vLLM for       │
-                              │   fine-tuned models) │
+                              │  vLLM (Qwen 2.5 +   │
+                              │  LoRA adapters) on   │
+                              │  Northflank H100     │
+                              │  ─── or ───          │
+                              │  Claude (fallback)   │
                               └─────────────────────┘
 ```
 
@@ -130,9 +132,18 @@ The `LLMAgent` class handles the core decision loop:
 
 1. **Observe** — Receive role-scoped observation from the environment
 2. **Retrieve** — Pull relevant memories from the memory stream
-3. **Decide** — Call Claude/Bedrock with system prompt + observation + memories → structured action output
+3. **Decide** — Call the LLM with system prompt + observation + memories → structured JSON action output
 4. **Reflect** (periodic) — Generate higher-level reflections from recent observations
 5. **Plan** (periodic) — Create plans based on current state and reflections
+
+Two inference backends are supported:
+
+| Backend | Model | Usage |
+|---------|-------|-------|
+| **vLLM** (primary) | Qwen 2.5 3B-Instruct + role-specific LoRA adapters | Production path — runs on Northflank H100, uses JSON prompting |
+| **Claude** (fallback) | Claude Sonnet via Anthropic API | Alternative mode when no vLLM endpoint is configured |
+
+When a vLLM endpoint is set (`set_vllm_endpoint()`), all agents use the Qwen model with their role-specific LoRA adapter. If no endpoint is configured, agents fall back to Claude.
 
 LLM calls use structured output (Pydantic models) to ensure valid actions:
 
@@ -230,7 +241,7 @@ Simulation (local)  →  POST /train  →  Northflank H100
                                         └── vLLM hot-reload
 ```
 
-Training triggers every N simulation days (configurable). After training, agents can switch from Claude to the fine-tuned model.
+Training triggers every N simulation days (configurable). LoRA adapters are hot-loaded into vLLM — models improve without restarting inference.
 
 #### GRPO Training Worker (`training/train_worker.py`)
 
@@ -286,17 +297,14 @@ Rich terminal UI dashboard showing:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes* | Claude API key |
-| `AWS_ACCESS_KEY_ID` | Yes* | AWS Bedrock credentials |
-| `AWS_SECRET_ACCESS_KEY` | Yes* | AWS Bedrock credentials |
-| `AWS_REGION` | No | Bedrock region (default: `us-east-1`) |
+| `NORTHFLANK_INFERENCE_ENDPOINT` | Yes* | vLLM URL on Northflank H100 |
+| `ANTHROPIC_API_KEY` | Yes* | Claude API key (fallback mode) |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | No | Google Sheets ID for live sync |
 | `GOOGLE_SHEETS_CREDENTIALS` | No | Service account JSON path or inline JSON |
-| `NORTHFLANK_INFERENCE_ENDPOINT` | No | vLLM URL on Northflank H100 |
-| `HF_TOKEN` | No | HuggingFace token (for gated models) |
+| `HF_TOKEN` | No | HuggingFace token (for model access & LoRA push) |
 | `WANDB_API_KEY` | No | Weights & Biases for training metrics |
 
-\* Either Anthropic or AWS Bedrock credentials required.
+\* Either a Northflank vLLM endpoint (primary) or Anthropic API key (fallback) is required.
 
 ## Testing
 
