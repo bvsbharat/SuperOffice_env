@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Html, Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -11,19 +11,16 @@ interface Office3DProps {
   zoomLevel: number
 }
 
-const SHIRT_COLORS = [
-  '#3b82f6', '#10b981', '#a855f7', '#f43f5e',
-  '#f59e0b', '#06b6d4', '#6366f1', '#ec4899',
+const AGENT_GLOW_COLORS = [
+  '#6366f1', '#10b981', '#ec4899', '#f59e0b',
+  '#a855f7', '#06b6d4', '#f43f5e',
 ]
 
-const SKIN_TONES = ['#F5D0A9', '#8D5524', '#FFDBB4', '#C68642', '#F1C27D', '#E0AC69', '#D4A574', '#FFE0BD']
-const HAIR_COLORS = ['#1a1a2e', '#2c1810', '#8B4513', '#4a2c2a', '#1a1a1a', '#6B3A2A', '#2c2c2c', '#D4A76A']
-const EYE_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f97316', '#22d3ee', '#92400e', '#34d399', '#f472b6']
-
-const OUTFIT_PRIMARY = ['#1e293b', '#7c3aed', '#ec4899', '#f97316', '#22d3ee', '#fbbf24', '#34d399', '#f472b6']
-const OUTFIT_SECONDARY = ['#ffffff', '#ede9fe', '#fdf2f8', '#fff7ed', '#1e293b', '#ffffff', '#1e293b', '#fdf2f8']
-const PANTS_COLORS = ['#1e293b', '#4c1d95', '#831843', '#78350f', '#1e293b', '#1e293b', '#374151', '#f472b6']
-const PANTS_STYLE: ('trousers' | 'skirt')[] = ['trousers', 'skirt', 'trousers', 'trousers', 'trousers', 'trousers', 'trousers', 'skirt']
+const FUR_BROWN = '#8B6914'
+const FUR_DARK = '#6B4E12'
+const FACE_CREAM = '#F5E6C8'
+const EYE_PATCH = '#3D2B1F'
+const NOSE_BLACK = '#1a1a1a'
 
 const to3D = (pctX: number, pctY: number): [number, number] => {
   const x = (pctX / 100) * 18 - 9
@@ -31,229 +28,301 @@ const to3D = (pctX: number, pctY: number): [number, number] => {
   return [x, z]
 }
 
-/* ── Hair styles per agent index ── */
-function AgentHair({ index, hairColor }: { index: number; hairColor: THREE.Color }) {
-  switch (index) {
-    case 0: // CEO - slicked back
-      return (
-        <group>
-          <mesh position={[0, 0.04, -0.02]} scale={[1, 0.7, 1]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-            <meshStandardMaterial color={hairColor} roughness={0.7} />
-          </mesh>
-          <mesh position={[0, 0.02, -0.06]} scale={[0.95, 0.6, 0.7]}>
-            <sphereGeometry args={[0.12, 8, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.7} />
-          </mesh>
-        </group>
-      )
-    case 1: // HR - bob
-      return (
-        <group>
-          <mesh position={[0, 0.04, -0.01]} scale={[1.05, 0.75, 1]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.65} />
-          </mesh>
-          <mesh position={[-0.09, -0.05, 0]} scale={[0.55, 0.9, 0.65]}>
-            <sphereGeometry args={[0.08, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.65} />
-          </mesh>
-          <mesh position={[0.09, -0.05, 0]} scale={[0.55, 0.9, 0.65]}>
-            <sphereGeometry args={[0.08, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.65} />
-          </mesh>
-        </group>
-      )
-    case 2: // Marketing - updo with pink streak
-      return (
-        <group>
-          <mesh position={[0, 0.06, -0.01]} scale={[1, 0.8, 0.95]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-            <meshStandardMaterial color={hairColor} roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 0.1, -0.02]} scale={[0.6, 0.5, 0.5]}>
-            <sphereGeometry args={[0.08, 8, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.6} />
-          </mesh>
-          <mesh position={[0.05, 0.04, 0.08]} scale={[0.25, 0.65, 0.35]}>
-            <sphereGeometry args={[0.08, 6, 6]} />
-            <meshStandardMaterial color="#ec4899" roughness={0.5} />
-          </mesh>
-        </group>
-      )
-    case 3: // Content - messy
-      return (
-        <group>
-          <mesh position={[0, 0.04, -0.01]} scale={[1.08, 0.7, 1.05]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.75} />
-          </mesh>
-          <mesh position={[-0.10, 0.0, 0.05]} rotation={[0, 0, 0.3]} scale={[0.3, 0.7, 0.3]}>
-            <sphereGeometry args={[0.05, 5, 5]} />
-            <meshStandardMaterial color={hairColor} roughness={0.75} />
-          </mesh>
-          <mesh position={[0.09, -0.01, 0.04]} rotation={[0, 0, -0.2]} scale={[0.3, 0.6, 0.3]}>
-            <sphereGeometry args={[0.05, 5, 5]} />
-            <meshStandardMaterial color={hairColor} roughness={0.75} />
-          </mesh>
-        </group>
-      )
-    case 4: // Dev - spiky
-      return (
-        <group>
-          <mesh position={[0, 0.04, 0]} scale={[1, 0.6, 1]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-            <meshStandardMaterial color={hairColor} roughness={0.7} />
-          </mesh>
-          {([[-0.05, 0.09, 0.03], [0.04, 0.1, 0.01], [-0.01, 0.11, -0.04], [0.06, 0.08, -0.02], [-0.03, 0.1, -0.01]] as [number, number, number][]).map((pos, i) => (
-            <mesh key={i} position={pos}>
-              <coneGeometry args={[0.025, 0.05, 4]} />
-              <meshStandardMaterial color={hairColor} roughness={0.7} />
-            </mesh>
-          ))}
-        </group>
-      )
-    case 5: // Sales - side-part
-      return (
-        <group>
-          <mesh position={[0, 0.04, -0.01]} scale={[1, 0.7, 1]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-            <meshStandardMaterial color={hairColor} roughness={0.6} />
-          </mesh>
-          <mesh position={[-0.06, 0.06, 0.05]} scale={[0.55, 0.4, 0.45]}>
-            <sphereGeometry args={[0.1, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.6} />
-          </mesh>
-          <mesh position={[-0.04, 0.07, 0.07]} scale={[0.35, 0.3, 0.3]}>
-            <sphereGeometry args={[0.08, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.6} />
-          </mesh>
-        </group>
-      )
-    case 6: // Customer - long flowing
-    default:
-      return (
-        <group>
-          <mesh position={[0, 0.04, -0.01]} scale={[1.05, 0.75, 1]}>
-            <sphereGeometry args={[0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.55} />
-          </mesh>
-          <mesh position={[-0.09, -0.09, -0.02]} scale={[0.45, 1.2, 0.55]}>
-            <sphereGeometry args={[0.07, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.55} />
-          </mesh>
-          <mesh position={[0.09, -0.09, -0.02]} scale={[0.45, 1.2, 0.55]}>
-            <sphereGeometry args={[0.07, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.55} />
-          </mesh>
-          <mesh position={[0, -0.06, -0.06]} scale={[0.85, 1.15, 0.55]}>
-            <sphereGeometry args={[0.08, 6, 6]} />
-            <meshStandardMaterial color={hairColor} roughness={0.55} />
-          </mesh>
-        </group>
-      )
-  }
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text
+  return text.slice(0, max - 1) + '\u2026'
 }
 
-/* ── Humanoid head with face + hair ── */
-function HumanHead({ skinColor, hairColor, eyeColor, index }: { skinColor: THREE.Color; hairColor: THREE.Color; eyeColor: string; index: number }) {
+/* ── Sloth Base Body (shared by all agents) ── */
+function SlothBody() {
   return (
-    <group position={[0, 0.58, 0]}>
-      {/* Head sphere */}
-      <mesh>
-        <sphereGeometry args={[0.12, 12, 10]} />
-        <meshStandardMaterial color={skinColor} roughness={0.6} metalness={0.05} />
+    <group>
+      {/* Chubby round body */}
+      <mesh castShadow position={[0, 0.22, 0]}>
+        <sphereGeometry args={[0.2, 14, 12]} />
+        <meshStandardMaterial color={FUR_BROWN} roughness={0.8} />
       </mesh>
-      {/* Left eye */}
-      <mesh position={[-0.04, 0.015, 0.1]} scale={[1, 1.3, 0.6]}>
-        <sphereGeometry args={[0.025, 8, 8]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.3} />
+      {/* Belly patch */}
+      <mesh position={[0, 0.2, 0.14]}>
+        <sphereGeometry args={[0.13, 10, 10]} />
+        <meshStandardMaterial color={FACE_CREAM} roughness={0.75} />
       </mesh>
-      <mesh position={[-0.04, 0.02, 0.115]} scale={[1, 1.2, 0.5]}>
-        <sphereGeometry args={[0.016, 8, 8]} />
-        <meshStandardMaterial color={eyeColor} roughness={0.2} />
+      {/* Left arm (stubby) */}
+      <mesh castShadow position={[-0.18, 0.18, 0]} rotation={[0, 0, 0.5]}>
+        <capsuleGeometry args={[0.055, 0.1, 4, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      <mesh position={[-0.04, 0.022, 0.125]}>
-        <sphereGeometry args={[0.008, 6, 6]} />
-        <meshStandardMaterial color="#1a1a2e" roughness={0.1} />
+      {/* Left claw */}
+      <mesh position={[-0.26, 0.12, 0]}>
+        <sphereGeometry args={[0.035, 6, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      <mesh position={[-0.035, 0.03, 0.128]}>
-        <sphereGeometry args={[0.004, 4, 4]} />
-        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={0.6} />
+      {/* Right arm (stubby) */}
+      <mesh castShadow position={[0.18, 0.18, 0]} rotation={[0, 0, -0.5]}>
+        <capsuleGeometry args={[0.055, 0.1, 4, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      {/* Left eyebrow */}
-      <mesh position={[-0.04, 0.052, 0.105]} rotation={[0, 0, 0.1]} scale={[1, 0.3, 0.3]}>
-        <boxGeometry args={[0.04, 0.01, 0.01]} />
-        <meshStandardMaterial color={hairColor} roughness={0.5} />
+      {/* Right claw */}
+      <mesh position={[0.26, 0.12, 0]}>
+        <sphereGeometry args={[0.035, 6, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      {/* Right eye */}
-      <mesh position={[0.04, 0.015, 0.1]} scale={[1, 1.3, 0.6]}>
-        <sphereGeometry args={[0.025, 8, 8]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.3} />
+      {/* Left leg */}
+      <mesh castShadow position={[-0.1, 0.02, 0.04]}>
+        <sphereGeometry args={[0.065, 8, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      <mesh position={[0.04, 0.02, 0.115]} scale={[1, 1.2, 0.5]}>
-        <sphereGeometry args={[0.016, 8, 8]} />
-        <meshStandardMaterial color={eyeColor} roughness={0.2} />
+      {/* Right leg */}
+      <mesh castShadow position={[0.1, 0.02, 0.04]}>
+        <sphereGeometry args={[0.065, 8, 6]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
       </mesh>
-      <mesh position={[0.04, 0.022, 0.125]}>
-        <sphereGeometry args={[0.008, 6, 6]} />
-        <meshStandardMaterial color="#1a1a2e" roughness={0.1} />
-      </mesh>
-      <mesh position={[0.045, 0.03, 0.128]}>
-        <sphereGeometry args={[0.004, 4, 4]} />
-        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={0.6} />
-      </mesh>
-      {/* Right eyebrow */}
-      <mesh position={[0.04, 0.052, 0.105]} rotation={[0, 0, -0.1]} scale={[1, 0.3, 0.3]}>
-        <boxGeometry args={[0.04, 0.01, 0.01]} />
-        <meshStandardMaterial color={hairColor} roughness={0.5} />
-      </mesh>
-      {/* Nose */}
-      <mesh position={[0, -0.005, 0.12]}>
-        <sphereGeometry args={[0.006, 5, 5]} />
-        <meshStandardMaterial color={skinColor.clone().lerp(new THREE.Color('#cc8866'), 0.2)} roughness={0.5} />
-      </mesh>
-      {/* Mouth */}
-      <mesh position={[0, -0.03, 0.11]} rotation={[0.2, 0, 0]} scale={[1.2, 0.4, 0.5]}>
-        <sphereGeometry args={[0.015, 8, 6]} />
-        <meshStandardMaterial color="#e88a9a" roughness={0.5} />
-      </mesh>
-      {/* Ears */}
-      <mesh position={[-0.115, 0.0, 0]} scale={[0.5, 1, 0.6]}>
-        <sphereGeometry args={[0.03, 6, 6]} />
-        <meshStandardMaterial color={skinColor} roughness={0.6} />
-      </mesh>
-      <mesh position={[0.115, 0.0, 0]} scale={[0.5, 1, 0.6]}>
-        <sphereGeometry args={[0.03, 6, 6]} />
-        <meshStandardMaterial color={skinColor} roughness={0.6} />
-      </mesh>
-      {/* Hair */}
-      <AgentHair index={index} hairColor={hairColor} />
     </group>
   )
 }
 
-/* ── Roblox-style Agent ── */
+/* ── Sloth Head (cute face with eye patches) ── */
+function SlothHead() {
+  return (
+    <group position={[0, 0.48, 0]}>
+      {/* Head */}
+      <mesh castShadow>
+        <sphereGeometry args={[0.16, 14, 12]} />
+        <meshStandardMaterial color={FUR_BROWN} roughness={0.8} />
+      </mesh>
+      {/* Face mask (cream) */}
+      <mesh position={[0, -0.02, 0.1]}>
+        <sphereGeometry args={[0.12, 10, 10]} />
+        <meshStandardMaterial color={FACE_CREAM} roughness={0.7} />
+      </mesh>
+      {/* Left eye patch (dark) */}
+      <mesh position={[-0.055, 0.02, 0.12]} scale={[1.4, 1.6, 0.5]}>
+        <sphereGeometry args={[0.035, 8, 8]} />
+        <meshStandardMaterial color={EYE_PATCH} roughness={0.6} />
+      </mesh>
+      {/* Left eye (white) */}
+      <mesh position={[-0.055, 0.025, 0.145]} scale={[1, 1.2, 0.5]}>
+        <sphereGeometry args={[0.02, 8, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.3} />
+      </mesh>
+      {/* Left pupil */}
+      <mesh position={[-0.05, 0.028, 0.155]}>
+        <sphereGeometry args={[0.01, 6, 6]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.2} />
+      </mesh>
+      {/* Left eye shine */}
+      <mesh position={[-0.045, 0.035, 0.16]}>
+        <sphereGeometry args={[0.004, 4, 4]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+      {/* Right eye patch (dark) */}
+      <mesh position={[0.055, 0.02, 0.12]} scale={[1.4, 1.6, 0.5]}>
+        <sphereGeometry args={[0.035, 8, 8]} />
+        <meshStandardMaterial color={EYE_PATCH} roughness={0.6} />
+      </mesh>
+      {/* Right eye (white) */}
+      <mesh position={[0.055, 0.025, 0.145]} scale={[1, 1.2, 0.5]}>
+        <sphereGeometry args={[0.02, 8, 8]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.3} />
+      </mesh>
+      {/* Right pupil */}
+      <mesh position={[0.05, 0.028, 0.155]}>
+        <sphereGeometry args={[0.01, 6, 6]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.2} />
+      </mesh>
+      {/* Right eye shine */}
+      <mesh position={[0.055, 0.035, 0.16]}>
+        <sphereGeometry args={[0.004, 4, 4]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+      {/* Nose */}
+      <mesh position={[0, -0.02, 0.17]}>
+        <sphereGeometry args={[0.02, 8, 8]} />
+        <meshStandardMaterial color={NOSE_BLACK} roughness={0.4} />
+      </mesh>
+      {/* Nose shine */}
+      <mesh position={[0.005, -0.012, 0.185]}>
+        <sphereGeometry args={[0.005, 4, 4]} />
+        <meshBasicMaterial color="#555555" />
+      </mesh>
+      {/* Mouth line (smile) */}
+      <mesh position={[0, -0.045, 0.155]} rotation={[0.3, 0, 0]} scale={[1.5, 0.3, 0.3]}>
+        <torusGeometry args={[0.015, 0.003, 4, 8, Math.PI]} />
+        <meshStandardMaterial color="#5a3825" roughness={0.5} />
+      </mesh>
+      {/* Left ear */}
+      <mesh position={[-0.12, 0.08, 0]} scale={[0.8, 1, 0.6]}>
+        <sphereGeometry args={[0.04, 6, 6]} />
+        <meshStandardMaterial color={FUR_BROWN} roughness={0.8} />
+      </mesh>
+      {/* Right ear */}
+      <mesh position={[0.12, 0.08, 0]} scale={[0.8, 1, 0.6]}>
+        <sphereGeometry args={[0.04, 6, 6]} />
+        <meshStandardMaterial color={FUR_BROWN} roughness={0.8} />
+      </mesh>
+      {/* Forehead tuft */}
+      <mesh position={[0, 0.14, 0.04]} rotation={[-0.3, 0, 0]}>
+        <coneGeometry args={[0.04, 0.06, 5]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
+      </mesh>
+      <mesh position={[-0.025, 0.13, 0.05]} rotation={[-0.3, 0, 0.3]}>
+        <coneGeometry args={[0.025, 0.04, 4]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
+      </mesh>
+      <mesh position={[0.025, 0.13, 0.05]} rotation={[-0.3, 0, -0.3]}>
+        <coneGeometry args={[0.025, 0.04, 4]} />
+        <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
+      </mesh>
+    </group>
+  )
+}
+
+/* ── Per-agent accessories ── */
+function SlothAccessories({ agentId }: { agentId: string }) {
+  switch (agentId) {
+    case 'ceo': // Golden crown
+      return (
+        <group position={[0, 0.66, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.1, 0.12, 0.06, 6]} />
+            <meshStandardMaterial color="#fbbf24" metalness={0.7} roughness={0.2} />
+          </mesh>
+          {/* Crown points */}
+          {[0, 1, 2, 3, 4].map(i => (
+            <mesh key={i} position={[Math.sin(i * Math.PI * 2 / 5) * 0.09, 0.05, Math.cos(i * Math.PI * 2 / 5) * 0.09]}>
+              <coneGeometry args={[0.02, 0.05, 4]} />
+              <meshStandardMaterial color="#f59e0b" metalness={0.7} roughness={0.2} />
+            </mesh>
+          ))}
+          {/* Jewel */}
+          <mesh position={[0, 0.0, 0.1]}>
+            <sphereGeometry args={[0.015, 6, 6]} />
+            <meshStandardMaterial color="#ef4444" metalness={0.5} roughness={0.1} emissive="#ef4444" emissiveIntensity={0.3} />
+          </mesh>
+        </group>
+      )
+    case 'hr': // Glasses + clipboard
+      return (
+        <group>
+          {/* Glasses frames */}
+          <group position={[0, 0.5, 0.16]}>
+            <mesh position={[-0.05, 0, 0]} rotation={[0, 0, 0]}>
+              <torusGeometry args={[0.025, 0.004, 4, 12]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.3} />
+            </mesh>
+            <mesh position={[0.05, 0, 0]}>
+              <torusGeometry args={[0.025, 0.004, 4, 12]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.3} />
+            </mesh>
+            {/* Bridge */}
+            <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.003, 0.003, 0.04, 4]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.3} />
+            </mesh>
+          </group>
+        </group>
+      )
+    case 'marketing': // Red baseball cap
+      return (
+        <group position={[0, 0.62, 0.02]}>
+          {/* Cap dome */}
+          <mesh rotation={[-0.15, 0, 0]}>
+            <sphereGeometry args={[0.14, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+            <meshStandardMaterial color="#ef4444" roughness={0.6} />
+          </mesh>
+          {/* Brim */}
+          <mesh position={[0, -0.01, 0.1]} rotation={[-0.4, 0, 0]}>
+            <cylinderGeometry args={[0.14, 0.14, 0.015, 12, 1, false, -Math.PI / 2, Math.PI]} />
+            <meshStandardMaterial color="#dc2626" roughness={0.6} />
+          </mesh>
+        </group>
+      )
+    case 'sales': // Business tie
+      return (
+        <group position={[0, 0.32, 0.18]}>
+          {/* Tie knot */}
+          <mesh position={[0, 0.03, 0]}>
+            <sphereGeometry args={[0.02, 6, 6]} />
+            <meshStandardMaterial color="#dc2626" roughness={0.5} />
+          </mesh>
+          {/* Tie body */}
+          <mesh position={[0, -0.02, 0]}>
+            <boxGeometry args={[0.04, 0.08, 0.01]} />
+            <meshStandardMaterial color="#dc2626" roughness={0.5} />
+          </mesh>
+          {/* Tie point */}
+          <mesh position={[0, -0.07, 0]} rotation={[0, 0, Math.PI / 4]}>
+            <boxGeometry args={[0.028, 0.028, 0.01]} />
+            <meshStandardMaterial color="#dc2626" roughness={0.5} />
+          </mesh>
+        </group>
+      )
+    case 'content': // Beret
+      return (
+        <group position={[0, 0.63, 0]}>
+          {/* Beret base */}
+          <mesh rotation={[0.1, 0.2, 0.15]}>
+            <sphereGeometry args={[0.13, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.45]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.6} />
+          </mesh>
+          {/* Beret nub */}
+          <mesh position={[0, 0.06, 0]}>
+            <sphereGeometry args={[0.02, 6, 6]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.6} />
+          </mesh>
+        </group>
+      )
+    case 'dev': // Hoodie
+      return (
+        <group>
+          {/* Hoodie body overlay */}
+          <mesh position={[0, 0.25, 0]}>
+            <sphereGeometry args={[0.22, 12, 10]} />
+            <meshStandardMaterial color="#374151" roughness={0.7} />
+          </mesh>
+          {/* Hood */}
+          <mesh position={[0, 0.42, -0.06]} scale={[1, 0.9, 1]}>
+            <sphereGeometry args={[0.16, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.65]} />
+            <meshStandardMaterial color="#374151" roughness={0.7} />
+          </mesh>
+          {/* Hood edge */}
+          <mesh position={[0, 0.38, 0.08]} scale={[1.05, 0.5, 0.5]}>
+            <torusGeometry args={[0.1, 0.015, 4, 12, Math.PI]} />
+            <meshStandardMaterial color="#4b5563" roughness={0.6} />
+          </mesh>
+        </group>
+      )
+    case 'customer': // Grumpy eyebrows (no accessory, just expression)
+      return (
+        <group position={[0, 0.48, 0]}>
+          {/* Angry left eyebrow */}
+          <mesh position={[-0.055, 0.06, 0.14]} rotation={[0, 0, -0.4]} scale={[1, 0.4, 0.4]}>
+            <boxGeometry args={[0.04, 0.012, 0.012]} />
+            <meshStandardMaterial color="#3D2B1F" roughness={0.5} />
+          </mesh>
+          {/* Angry right eyebrow */}
+          <mesh position={[0.055, 0.06, 0.14]} rotation={[0, 0, 0.4]} scale={[1, 0.4, 0.4]}>
+            <boxGeometry args={[0.04, 0.012, 0.012]} />
+            <meshStandardMaterial color="#3D2B1F" roughness={0.5} />
+          </mesh>
+        </group>
+      )
+    default:
+      return null
+  }
+}
+
+/* ── Cute 3D Sloth Agent ── */
 function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents: Agent[] }) {
   const groupRef = useRef<THREE.Group>(null)
   const leftArmRef = useRef<THREE.Group>(null)
   const rightArmRef = useRef<THREE.Group>(null)
-  const leftLegRef = useRef<THREE.Group>(null)
-  const rightLegRef = useRef<THREE.Group>(null)
   const [displayMsg, setDisplayMsg] = useState<string | undefined>(agent.lastMessage || agent.currentTask)
 
   useEffect(() => {
     const msg = agent.lastMessage || agent.currentTask
     if (msg) setDisplayMsg(msg)
   }, [agent.lastMessage, agent.currentTask])
-
-  const skinColor = useMemo(() => new THREE.Color(SKIN_TONES[index % SKIN_TONES.length]), [index])
-  const hairColor = useMemo(() => new THREE.Color(HAIR_COLORS[index % HAIR_COLORS.length]), [index])
-  const eyeColor = EYE_COLORS[index % EYE_COLORS.length]
-  const outfitPrimary = OUTFIT_PRIMARY[index % OUTFIT_PRIMARY.length]
-  const outfitSecondary = OUTFIT_SECONDARY[index % OUTFIT_SECONDARY.length]
-  const pantsColor = PANTS_COLORS[index % PANTS_COLORS.length]
-  const pantsStyle = PANTS_STYLE[index % PANTS_STYLE.length]
 
   const { col, row } = getAgentPos(index)
   const homeX = 16.66 + col * 33.33
@@ -263,7 +332,6 @@ function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents
   let targetPctY = homeY
   let targetRotY = 0
 
-  // Default facing direction
   if (col === 0) targetRotY = -Math.PI / 2
   else if (col === 2) targetRotY = Math.PI / 2
   else if (row === 2) targetRotY = Math.PI
@@ -281,7 +349,6 @@ function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents
       const { col: tCol, row: tRow } = getAgentPos(targetIndex)
       const tCenterX = 16.66 + tCol * 33.33
       const tCenterY = 16.66 + tRow * 33.33
-      // Walk TO the target's cubicle (offset slightly so they stand beside the desk)
       targetPctX = tCenterX + (index % 2 === 0 ? -5 : 5)
       targetPctY = tCenterY + (index % 2 === 0 ? 3 : -3)
       targetRotY = Math.atan2(tCenterX - targetPctX, tCenterY - targetPctY)
@@ -310,151 +377,73 @@ function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents
     while (diff > Math.PI) diff -= Math.PI * 2
     groupRef.current.rotation.y += diff * 3 * delta
 
-    // Y position: walking bounce or working bob or idle
+    // Cute bounce: hop when walking, bob when working, idle breathe
     if (isMoving) {
-      groupRef.current.position.y = 0.5 + Math.abs(Math.sin(t * 8)) * 0.04
+      groupRef.current.position.y = 0.5 + Math.abs(Math.sin(t * 8)) * 0.12
     } else if (agent.status === 'working') {
-      groupRef.current.position.y = 0.5 + Math.sin(t * 8) * 0.06
+      groupRef.current.position.y = 0.5 + Math.sin(t * 3) * 0.06
     } else {
       groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, 0.5, 3 * delta)
     }
 
-    // Arm animations
+    // Arm wave when working
     if (leftArmRef.current && rightArmRef.current) {
-      if (isMoving) {
-        leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 8) * 0.4
-        rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 8 + Math.PI) * 0.4
-      } else if (agent.status === 'working') {
-        leftArmRef.current.rotation.z = 0.3 + Math.sin(t * 6) * 0.15
-        rightArmRef.current.rotation.z = -0.3 - Math.sin(t * 6 + 1.2) * 0.15
+      if (agent.status === 'working') {
+        leftArmRef.current.rotation.z = 0.5 + Math.sin(t * 4) * 0.3
+        rightArmRef.current.rotation.z = -0.5 - Math.sin(t * 4 + 1) * 0.3
+      } else if (isMoving) {
+        leftArmRef.current.rotation.z = 0.5 + Math.sin(t * 6) * 0.4
+        rightArmRef.current.rotation.z = -0.5 - Math.sin(t * 6 + Math.PI) * 0.4
       } else {
-        leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 1.0) * 0.08
-        rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 1.0 + Math.PI) * 0.08
-      }
-    }
-
-    // Leg animations
-    if (leftLegRef.current && rightLegRef.current) {
-      if (isMoving) {
-        leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.3
-        rightLegRef.current.rotation.x = Math.sin(t * 8 + Math.PI) * 0.3
-      } else {
-        leftLegRef.current.rotation.x = THREE.MathUtils.lerp(leftLegRef.current.rotation.x, 0, 5 * delta)
-        rightLegRef.current.rotation.x = THREE.MathUtils.lerp(rightLegRef.current.rotation.x, 0, 5 * delta)
+        leftArmRef.current.rotation.z = THREE.MathUtils.lerp(leftArmRef.current.rotation.z, 0.5, 3 * delta)
+        rightArmRef.current.rotation.z = THREE.MathUtils.lerp(rightArmRef.current.rotation.z, -0.5, 3 * delta)
       }
     }
   })
 
-  const color = SHIRT_COLORS[index % SHIRT_COLORS.length]
-  const bubbleText = agent.currentTask || displayMsg || agent.lastMessage
+  const glowColor = AGENT_GLOW_COLORS[index % AGENT_GLOW_COLORS.length]
+  const bubbleText = agent.lastMessage || displayMsg || agent.currentTask
   const showBubble = !!(bubbleText && agent.status !== 'success' && (agent.status === 'working' || agent.talkingTo || agent.lastMessage))
 
   return (
-    <group ref={groupRef} position={[targetX, 0.5, targetZ]} scale={1.6}>
-      {/* === LEGS === */}
-      <group ref={leftLegRef} position={[-0.06, 0.2, 0]}>
-        {/* Upper leg */}
-        <mesh position={[0, -0.06, 0]}>
-          <capsuleGeometry args={[0.04, 0.12, 4, 6]} />
-          <meshStandardMaterial color={pantsColor} roughness={0.7} />
+    <group ref={groupRef} position={[targetX, 0.5, targetZ]} scale={1.8}>
+      {/* Sloth body */}
+      <SlothBody />
+      {/* Animated arms (override body arms for animation) */}
+      <group ref={leftArmRef} position={[-0.18, 0.22, 0]}>
+        <mesh castShadow rotation={[0, 0, 0.5]}>
+          <capsuleGeometry args={[0.055, 0.1, 4, 6]} />
+          <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
         </mesh>
-        {/* Lower leg */}
-        <mesh position={[0, -0.16, 0]}>
-          <capsuleGeometry args={[0.03, 0.1, 4, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-        {/* Shoe */}
-        <mesh position={[0, -0.23, 0.015]}>
-          <boxGeometry args={[0.055, 0.03, 0.07]} />
-          <meshStandardMaterial color="#1a1a2e" roughness={0.7} />
+        <mesh position={[-0.06, -0.06, 0]}>
+          <sphereGeometry args={[0.035, 6, 6]} />
+          <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
         </mesh>
       </group>
-      <group ref={rightLegRef} position={[0.06, 0.2, 0]}>
-        <mesh position={[0, -0.06, 0]}>
-          <capsuleGeometry args={[0.04, 0.12, 4, 6]} />
-          <meshStandardMaterial color={pantsColor} roughness={0.7} />
+      <group ref={rightArmRef} position={[0.18, 0.22, 0]}>
+        <mesh castShadow rotation={[0, 0, -0.5]}>
+          <capsuleGeometry args={[0.055, 0.1, 4, 6]} />
+          <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
         </mesh>
-        <mesh position={[0, -0.16, 0]}>
-          <capsuleGeometry args={[0.03, 0.1, 4, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-        <mesh position={[0, -0.23, 0.015]}>
-          <boxGeometry args={[0.055, 0.03, 0.07]} />
-          <meshStandardMaterial color="#1a1a2e" roughness={0.7} />
+        <mesh position={[0.06, -0.06, 0]}>
+          <sphereGeometry args={[0.035, 6, 6]} />
+          <meshStandardMaterial color={FUR_DARK} roughness={0.8} />
         </mesh>
       </group>
-      {/* Skirt overlay for skirt agents */}
-      {pantsStyle === 'skirt' && (
-        <mesh position={[0, 0.22, 0]}>
-          <capsuleGeometry args={[0.08, 0.08, 6, 8]} />
-          <meshStandardMaterial color={pantsColor} roughness={0.6} />
-        </mesh>
-      )}
-
-      {/* === NECK === */}
-      <mesh position={[0, 0.50, 0]}>
-        <cylinderGeometry args={[0.03, 0.035, 0.04, 6]} />
-        <meshStandardMaterial color={skinColor} roughness={0.6} />
-      </mesh>
-
-      {/* === TORSO (skin base) === */}
-      <mesh position={[0, 0.38, 0]}>
-        <capsuleGeometry args={[0.09, 0.14, 6, 8]} />
-        <meshStandardMaterial color={skinColor} roughness={0.6} />
-      </mesh>
-      {/* === CLOTHING OVERLAY === */}
-      <mesh position={[0, 0.38, 0]}>
-        <capsuleGeometry args={[0.1, 0.16, 6, 8]} />
-        <meshStandardMaterial color={outfitPrimary} roughness={0.7} />
-      </mesh>
-      {/* Collar / secondary detail */}
-      <mesh position={[0, 0.47, 0.06]} scale={[1.2, 0.5, 0.8]}>
-        <boxGeometry args={[0.08, 0.02, 0.02]} />
-        <meshStandardMaterial color={outfitSecondary} roughness={0.5} />
-      </mesh>
-
-      {/* === HEAD === */}
-      <HumanHead skinColor={skinColor} hairColor={hairColor} eyeColor={eyeColor} index={index} />
-
-      {/* === ARMS === */}
-      <group ref={leftArmRef} position={[-0.14, 0.42, 0]}>
-        <mesh position={[0, -0.04, 0]}>
-          <capsuleGeometry args={[0.03, 0.1, 4, 6]} />
-          <meshStandardMaterial color={outfitPrimary} roughness={0.7} />
-        </mesh>
-        <mesh position={[0, -0.13, 0]}>
-          <capsuleGeometry args={[0.025, 0.08, 4, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-        <mesh position={[0, -0.19, 0]}>
-          <sphereGeometry args={[0.022, 6, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-      </group>
-      <group ref={rightArmRef} position={[0.14, 0.42, 0]}>
-        <mesh position={[0, -0.04, 0]}>
-          <capsuleGeometry args={[0.03, 0.1, 4, 6]} />
-          <meshStandardMaterial color={outfitPrimary} roughness={0.7} />
-        </mesh>
-        <mesh position={[0, -0.13, 0]}>
-          <capsuleGeometry args={[0.025, 0.08, 4, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-        <mesh position={[0, -0.19, 0]}>
-          <sphereGeometry args={[0.022, 6, 6]} />
-          <meshStandardMaterial color={skinColor} roughness={0.6} />
-        </mesh>
-      </group>
+      {/* Sloth head */}
+      <SlothHead />
+      {/* Role accessories */}
+      <SlothAccessories agentId={agent.id} />
 
       {/* Glow when working */}
       {agent.status === 'working' && (
-        <pointLight position={[0, 1.5, 0]} color={color} intensity={2} distance={3} />
+        <pointLight position={[0, 1.2, 0]} color={glowColor} intensity={2} distance={3} />
       )}
 
-      {/* Speech bubble only (no name badge — name is on desk nameplate) */}
+      {/* Cartoon speech bubble */}
       {showBubble && bubbleText && (
         <Html
-          position={[0, 1.18, 0]}
+          position={[0, 0.85, 0]}
           center
           zIndexRange={[100, 0]}
           style={{ pointerEvents: 'none' }}
@@ -463,29 +452,45 @@ function Agent3D({ agent, index, agents }: { agent: Agent; index: number; agents
             position: 'relative',
             background: agent.status === 'working' ? '#4f46e5' : '#ffffff',
             color: agent.status === 'working' ? '#ffffff' : '#1e293b',
-            fontSize: 11,
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            padding: '8px 12px',
-            borderRadius: 12,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-            fontWeight: 500,
-            width: 180,
-            lineHeight: 1.4,
-            border: agent.status === 'working' ? '2px solid #818cf8' : '2px solid #cbd5e1',
+            fontSize: 10,
+            fontFamily: "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, system-ui",
+            padding: '4px 10px',
+            borderRadius: 16,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            fontWeight: 600,
+            maxWidth: 220,
+            minWidth: 60,
+            lineHeight: 1.3,
+            border: agent.status === 'working' ? '2px solid #818cf8' : '2px solid #e2e8f0',
             textAlign: 'center' as const,
-            wordWrap: 'break-word' as const,
+            whiteSpace: 'nowrap' as const,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}>
-            {bubbleText}
+            {truncate(bubbleText, 50)}
+            {/* Cartoon tail */}
             <div style={{
               position: 'absolute',
-              bottom: -8,
+              bottom: -7,
               left: '50%',
               transform: 'translateX(-50%)',
               width: 0,
               height: 0,
-              borderLeft: '8px solid transparent',
-              borderRight: '8px solid transparent',
-              borderTop: `8px solid ${agent.status === 'working' ? '#4f46e5' : '#ffffff'}`,
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: `7px solid ${agent.status === 'working' ? '#4f46e5' : '#ffffff'}`,
+            }} />
+            <div style={{
+              position: 'absolute',
+              bottom: -10,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '7px solid transparent',
+              borderRight: '7px solid transparent',
+              borderTop: `8px solid ${agent.status === 'working' ? '#818cf8' : '#e2e8f0'}`,
+              zIndex: -1,
             }} />
           </div>
         </Html>
@@ -682,7 +687,6 @@ function Lobby() {
   )
 }
 
-// Pre-computed tree positions outside the office footprint
 const TREE_POSITIONS: [number, number][] = [
   [-16, -12], [-20, -4], [-18, 6], [-14, 14], [-22, 10],
   [16, -12], [20, -4], [18, 6], [14, 14], [22, 10],
@@ -726,13 +730,11 @@ export default function Office3D({ agents }: Office3DProps) {
         />
         <Environment preset="city" />
 
-        {/* Ground */}
         <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
           <planeGeometry args={[100, 100]} />
           <meshStandardMaterial color="#86efac" />
         </mesh>
 
-        {/* Office Base */}
         <mesh receiveShadow position={[0, 0, 0]}>
           <boxGeometry args={[18.2, 0.2, 18.2]} />
           <meshStandardMaterial color="#475569" />
@@ -751,7 +753,6 @@ export default function Office3D({ agents }: Office3DProps) {
 
         <Trees />
 
-        {/* OrbitControls: zoom, pan, rotate freely */}
         <OrbitControls
           makeDefault
           maxPolarAngle={Math.PI / 2 - 0.05}
