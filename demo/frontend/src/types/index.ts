@@ -135,9 +135,22 @@ export const PHASE_STEP_RANGES: Record<Phase, [number, number]> = {
 export const agentIconPath = (id: AgentId) => `/agents/${id}.png`
 
 export type Theme = 'light' | 'dark'
-export type ViewMode = 'playground' | '3d' | 'tabular'
+export type ViewMode = 'playground' | '3d' | '4d' | 'tabular'
 
-export type AgentAccessory = 'crown' | 'headphones' | 'visor' | 'beret' | 'goggles' | 'monocle' | 'antenna_large' | 'bow'
+export interface StateSnapshot {
+  step: number
+  phase: Phase
+  activeAgent: AgentId | null
+  agents: Record<AgentId, GTMAgent>
+  kpis: KPISnapshot
+  globalReward: number
+  cooperationScore: number
+  reasoning: string
+  task: string
+  handoffTo: AgentId | null
+}
+
+export type AgentAccessory = 'tie_clip' | 'headset' | 'sunglasses' | 'beret' | 'glasses' | 'watch' | 'lanyard' | 'hair_clip'
 
 export interface Agent3DConfig {
   color: string
@@ -148,37 +161,49 @@ export interface Agent3DConfig {
 }
 
 export const AGENT_3D_CONFIG: Record<AgentId, Agent3DConfig> = {
-  ceo:       { color: '#6366f1', accentColor: '#818cf8', accessory: 'crown',         roomLabel: 'EXEC SUITE',   roomDescription: "CEO's executive office" },
-  hr:        { color: '#8b5cf6', accentColor: '#a78bfa', accessory: 'headphones',    roomLabel: 'OPS ROOM',     roomDescription: 'HR operations center' },
-  marketing: { color: '#ec4899', accentColor: '#f472b6', accessory: 'visor',         roomLabel: 'CAMPAIGN HUB', roomDescription: 'Marketing campaign hub' },
-  content:   { color: '#f97316', accentColor: '#fb923c', accessory: 'beret',         roomLabel: 'CONTENT LAB',  roomDescription: 'Content creation lab' },
-  dev:       { color: '#22d3ee', accentColor: '#67e8f9', accessory: 'goggles',       roomLabel: 'DEV ROOM',     roomDescription: 'Developer workspace' },
-  sales:     { color: '#fbbf24', accentColor: '#fcd34d', accessory: 'monocle',       roomLabel: 'SALES FLOOR',  roomDescription: 'Sales team floor' },
-  scene:     { color: '#34d399', accentColor: '#6ee7b7', accessory: 'antenna_large', roomLabel: 'SERVER ROOM',  roomDescription: 'Infrastructure server room' },
-  customer:  { color: '#f472b6', accentColor: '#f9a8d4', accessory: 'bow',           roomLabel: 'LOBBY',        roomDescription: 'Customer reception lobby' },
+  ceo:       { color: '#6366f1', accentColor: '#818cf8', accessory: 'tie_clip',    roomLabel: 'EXEC SUITE',   roomDescription: "CEO's executive office" },
+  hr:        { color: '#8b5cf6', accentColor: '#a78bfa', accessory: 'headset',     roomLabel: 'OPS ROOM',     roomDescription: 'HR operations center' },
+  marketing: { color: '#ec4899', accentColor: '#f472b6', accessory: 'sunglasses',  roomLabel: 'CAMPAIGN HUB', roomDescription: 'Marketing campaign hub' },
+  content:   { color: '#f97316', accentColor: '#fb923c', accessory: 'beret',       roomLabel: 'CONTENT LAB',  roomDescription: 'Content creation lab' },
+  dev:       { color: '#22d3ee', accentColor: '#67e8f9', accessory: 'glasses',     roomLabel: 'DEV ROOM',     roomDescription: 'Developer workspace' },
+  sales:     { color: '#fbbf24', accentColor: '#fcd34d', accessory: 'watch',       roomLabel: 'SALES FLOOR',  roomDescription: 'Sales team floor' },
+  scene:     { color: '#34d399', accentColor: '#6ee7b7', accessory: 'lanyard',     roomLabel: 'SERVER ROOM',  roomDescription: 'Infrastructure server room' },
+  customer:  { color: '#f472b6', accentColor: '#f9a8d4', accessory: 'hair_clip',   roomLabel: 'LOBBY',        roomDescription: 'Customer reception lobby' },
 }
 
-// 2x4 grid world positions: [x, y, z] — spread wide with hallway corridor
+// L-shape layout: top row + left arm + right arm + bottom
 export const ROOM_3D_POSITIONS: Record<AgentId, [number, number, number]> = {
-  ceo:       [-4.5, 0, -5.0],
-  hr:        [ 3.5, 0, -5.0],
-  marketing: [-4.5, 0, -1.8],
-  content:   [ 3.5, 0, -1.8],
-  dev:       [-4.5, 0,  1.4],
-  sales:     [ 3.5, 0,  1.4],
-  scene:     [-4.5, 0,  4.6],
-  customer:  [ 3.5, 0,  4.6],
+  ceo:       [-3.0, 0, -6.0],   // top row left
+  marketing: [ 3.0, 0, -6.0],   // top row right
+  hr:        [-7.5, 0, -0.5],   // left column upper
+  sales:     [-7.5, 0,  4.5],   // left column middle
+  customer:  [-7.5, 0,  9.5],   // left column lower (lobby beside sales)
+  dev:       [ 7.5, 0, -0.5],   // right column upper
+  scene:     [ 7.5, 0,  4.5],   // right column middle (server room)
+  content:   [ 7.5, 0,  9.5],   // right column lower (content beside server)
+}
+
+// Rotation per room so each faces inward toward center
+export const ROOM_ROTATIONS: Record<AgentId, number> = {
+  ceo:       0,                  // faces +z (toward center)
+  marketing: 0,                  // faces +z
+  hr:        Math.PI / 2,       // faces +x (toward center)
+  sales:     Math.PI / 2,       // faces +x (toward center)
+  customer:  Math.PI / 2,       // faces +x (toward center)
+  dev:       -Math.PI / 2,      // faces -x (toward center)
+  scene:     -Math.PI / 2,      // faces -x (toward center)
+  content:   -Math.PI / 2,      // faces -x (toward center)
 }
 
 export const ROOM_FLOOR_COLORS: Record<AgentId, string> = {
-  ceo:       '#4a3f6b',  // deep royal purple carpet
-  hr:        '#3d4a6b',  // slate blue carpet
-  marketing: '#6b3d5a',  // magenta-tinted carpet
-  content:   '#6b5a3d',  // warm amber carpet
-  dev:       '#2a4a5a',  // dark teal tile
-  sales:     '#5a5030',  // golden brown carpet
-  scene:     '#2a3a2a',  // dark green industrial tile
-  customer:  '#5a4a3a',  // warm wood lobby floor
+  ceo:       '#1e293b',  // dark slate (CEO office)
+  hr:        '#fed7aa',  // light orange (HR)
+  marketing: '#bfdbfe',  // light blue (marketing)
+  content:   '#e9d5ff',  // light purple (creative)
+  dev:       '#0f172a',  // very dark (dev room)
+  sales:     '#bfdbfe',  // light blue (sales)
+  scene:     '#0f172a',  // very dark (server room)
+  customer:  '#cbd5e1',  // light slate (lobby)
 }
 export interface PanelVisibility {
   rightSidebar: boolean

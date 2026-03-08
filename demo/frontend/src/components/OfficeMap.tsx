@@ -5,10 +5,10 @@ import type { PhaserBridge } from '../game/OfficeScene'
 
 export function OfficeMap() {
   const [bridge, setBridge] = useState<PhaserBridge | null>(null)
-  const [tilt, setTilt] = useState(20)
+  const [tilt, setTilt] = useState(0)
 
   return (
-    <div className="w-full h-full relative" style={{ background: '#7ec850', perspective: '1200px', overflow: 'clip' }}>
+    <div className="w-full h-full relative" style={{ background: 'rgb(153 255 105)', perspective: '1200px', overflow: 'visible' }}>
       <div
         className="w-full h-full relative"
         style={{

@@ -19,11 +19,25 @@ const MIN_ZOOM = 0.3
 const MAX_ZOOM = 3
 const ZOOM_STEP = 0.15
 
+const BUBBLE_OFFSET_Y = -52
+const BUBBLE_MAX_WIDTH = 220
+const BUBBLE_PADDING = 12
+const BUBBLE_FONT_SIZE = '13px'
+const BUBBLE_MAX_CHARS = 120
+const BUBBLE_TAIL_SIZE = 6
+const TEXT_RESOLUTION = 3
+
 interface AgentSprite {
   sprite: Phaser.GameObjects.Sprite
   nameText: Phaser.GameObjects.Text
   targetX: number
   targetY: number
+}
+
+interface SpeechBubbleObjects {
+  bubble: Phaser.GameObjects.Graphics
+  label: Phaser.GameObjects.Text
+  expiresAt: number
 }
 
 export interface PhaserBridge {
@@ -36,6 +50,7 @@ export interface PhaserBridge {
   worldToScreen(wx: number, wy: number): { x: number; y: number } | null
   getAgentWorldPositions(): Record<string, { x: number; y: number }>
   getCanvasElement(): HTMLCanvasElement | null
+  updateSpeechBubbles(bubbles: Array<{ agentId: string; text: string; expiresAt: number }>): void
   zoomIn(): void
   zoomOut(): void
   resetCamera(): void
@@ -43,6 +58,7 @@ export interface PhaserBridge {
 
 export class OfficeScene extends Phaser.Scene {
   private agentSprites: Map<AgentId, AgentSprite> = new Map()
+  private speechBubbleObjects: Map<string, SpeechBubbleObjects> = new Map()
   private currentPhase: Phase = 'standup'
   private isDragging = false
   private dragStartX = 0
@@ -77,8 +93,6 @@ export class OfficeScene extends Phaser.Scene {
       this.load.atlas(aid, `/game/sprites/${aid}.png`, '/game/sprites/atlas.json')
     }
 
-    // Speech bubble
-    this.load.image('speech_bubble', '/game/sprites/speech_bubble.png')
   }
 
   create() {
@@ -130,7 +144,8 @@ export class OfficeScene extends Phaser.Scene {
       const cam = this.cameras.main
       const vw = this.scale.width
       const vh = this.scale.height
-      const zoom = Math.max(vw / BUILDING_W, vh / BUILDING_H)
+      // Fit entire building inside viewport (no overflow)
+      const zoom = Math.min(vw / BUILDING_W, vh / BUILDING_H)
       this.defaultZoom = zoom
       cam.setZoom(zoom)
       cam.centerOn(BUILDING_CENTER_X, BUILDING_CENTER_Y)
@@ -205,6 +220,23 @@ export class OfficeScene extends Phaser.Scene {
       getCanvasElement: () => {
         return this.game.canvas ?? null
       },
+      updateSpeechBubbles: (bubbles) => {
+        const now = Date.now()
+        const activeIds = new Set(bubbles.map((b) => b.agentId))
+        // Remove bubbles for agents no longer active
+        for (const [aid, obj] of this.speechBubbleObjects) {
+          if (!activeIds.has(aid)) {
+            this.hideSpeechBubble(aid)
+          }
+        }
+        // Show/update bubbles
+        for (const b of bubbles) {
+          if (b.expiresAt <= now) continue
+          const existing = this.speechBubbleObjects.get(b.agentId)
+          if (existing && existing.expiresAt === b.expiresAt) continue
+          this.showSpeechBubble(b.agentId, b.text, b.expiresAt)
+        }
+      },
       zoomIn: () => {
         const cam = this.cameras.main
         cam.setZoom(Phaser.Math.Clamp(cam.zoom + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))
@@ -252,16 +284,18 @@ export class OfficeScene extends Phaser.Scene {
       }
     })
 
-    // Name text below sprite
+    // Name text below sprite — high resolution so it's crisp despite pixelArt mode
     const nameText = this.add.text(x, y + 28, aid.toUpperCase(), {
       fontSize: '18px',
       fontFamily: 'monospace',
       color: '#ffffff',
       backgroundColor: '#000000cc',
       padding: { x: 6, y: 3 },
+      resolution: TEXT_RESOLUTION,
     })
     nameText.setOrigin(0.5, 0)
     nameText.setDepth(7)
+    nameText.texture.setFilter(Phaser.Textures.FilterMode.LINEAR)
 
     this.agentSprites.set(aid, {
       sprite,
@@ -304,6 +338,25 @@ export class OfficeScene extends Phaser.Scene {
 
       // Update name position
       nameText.setPosition(sprite.x, sprite.y + 28)
+
+      // Update speech bubble position or expire
+      const bubbleObj = this.speechBubbleObjects.get(aid)
+      if (bubbleObj) {
+        if (Date.now() > bubbleObj.expiresAt) {
+          this.hideSpeechBubble(aid)
+        } else {
+          // Graphics drawn relative to origin, so just move it
+          bubbleObj.bubble.setPosition(sprite.x, sprite.y + BUBBLE_OFFSET_Y)
+          // Reposition text to stay centered in the bubble
+          const textW = bubbleObj.label.width
+          const textH = bubbleObj.label.height
+          const boxH = textH + 2 * BUBBLE_PADDING
+          bubbleObj.label.setPosition(
+            sprite.x - textW / 2,
+            sprite.y + BUBBLE_OFFSET_Y - (boxH + BUBBLE_TAIL_SIZE) + BUBBLE_PADDING
+          )
+        }
+      }
     }
   }
 
@@ -328,6 +381,86 @@ export class OfficeScene extends Phaser.Scene {
         agentData.sprite.clearTint()
         agentData.sprite.setScale(1.5)
       }
+    }
+  }
+
+  private showSpeechBubble(agentId: string, text: string, expiresAt: number) {
+    this.hideSpeechBubble(agentId)
+    const agentData = this.agentSprites.get(agentId as AgentId)
+    if (!agentData) return
+
+    const { sprite } = agentData
+    const truncated = text.length > BUBBLE_MAX_CHARS ? text.slice(0, BUBBLE_MAX_CHARS - 3) + '...' : text
+    const initials = agentId.slice(0, 3).toUpperCase()
+    const displayText = `${initials}: ${truncated}`
+
+    // Create text first to measure its size — high resolution for crisp rendering
+    const label = this.add.text(0, 0, displayText, {
+      fontSize: BUBBLE_FONT_SIZE,
+      fontFamily: 'monospace',
+      color: '#000000',
+      wordWrap: { width: BUBBLE_MAX_WIDTH - 2 * BUBBLE_PADDING },
+      align: 'center',
+      resolution: TEXT_RESOLUTION,
+    })
+    label.setDepth(21)
+    label.texture.setFilter(Phaser.Textures.FilterMode.LINEAR)
+
+    const textW = label.width
+    const textH = label.height
+    const boxW = textW + 2 * BUBBLE_PADDING
+    const boxH = textH + 2 * BUBBLE_PADDING
+
+    // Position text centered inside the bubble (drawn relative to origin)
+    label.setPosition(-textW / 2, -(boxH + BUBBLE_TAIL_SIZE) - BUBBLE_PADDING + BUBBLE_PADDING / 2)
+    // Simplify: place label so it's centered in the box above the tail
+    label.setPosition(-textW / 2, -(boxH + BUBBLE_TAIL_SIZE) + BUBBLE_PADDING)
+
+    // Draw bubble graphics relative to (0, 0) — we'll reposition via setPosition
+    const bubble = this.add.graphics()
+    bubble.setDepth(20)
+
+    const bx = -boxW / 2
+    const by = -(boxH + BUBBLE_TAIL_SIZE)
+    const radius = 8
+
+    // Fill
+    bubble.fillStyle(0xffffff, 0.95)
+    bubble.fillRoundedRect(bx, by, boxW, boxH, radius)
+    // Stroke
+    bubble.lineStyle(2, 0x000000, 1)
+    bubble.strokeRoundedRect(bx, by, boxW, boxH, radius)
+    // Tail triangle pointing down
+    bubble.fillStyle(0xffffff, 0.95)
+    bubble.fillTriangle(
+      -BUBBLE_TAIL_SIZE, by + boxH,
+      BUBBLE_TAIL_SIZE, by + boxH,
+      0, 0
+    )
+    // Stroke tail edges (left and right lines only)
+    bubble.lineStyle(2, 0x000000, 1)
+    bubble.lineBetween(-BUBBLE_TAIL_SIZE, by + boxH, 0, 0)
+    bubble.lineBetween(BUBBLE_TAIL_SIZE, by + boxH, 0, 0)
+    // Cover the stroke at the base of the tail with a white fill
+    bubble.fillStyle(0xffffff, 0.95)
+    bubble.fillRect(-BUBBLE_TAIL_SIZE + 1, by + boxH - 2, BUBBLE_TAIL_SIZE * 2 - 2, 3)
+
+    // Position both at the sprite location
+    bubble.setPosition(sprite.x, sprite.y + BUBBLE_OFFSET_Y)
+    label.setPosition(
+      sprite.x - textW / 2,
+      sprite.y + BUBBLE_OFFSET_Y - (boxH + BUBBLE_TAIL_SIZE) + BUBBLE_PADDING
+    )
+
+    this.speechBubbleObjects.set(agentId, { bubble, label, expiresAt })
+  }
+
+  private hideSpeechBubble(agentId: string) {
+    const existing = this.speechBubbleObjects.get(agentId)
+    if (existing) {
+      existing.bubble.destroy()
+      existing.label.destroy()
+      this.speechBubbleObjects.delete(agentId)
     }
   }
 

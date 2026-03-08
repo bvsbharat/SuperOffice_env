@@ -173,6 +173,21 @@ svg { image-rendering: pixelated; }
   z-index: 50;
   line-height: 1.4;
   color: var(--color-text-primary);
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+}
+
+@keyframes speech-bubble-fade-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 8px)); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+.speech-bubble-enter {
+  animation: speech-bubble-fade-in 0.2s ease-out forwards;
+}
+
+@keyframes speechOverlayIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .room-label {
@@ -257,4 +272,42 @@ svg { image-rendering: pixelated; }
   border: 2px solid var(--color-panel);
   cursor: pointer;
   margin-left: -4px;
+}
+
+/* 4D View button styles */
+.fourd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: monospace;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  background: rgba(51, 65, 85, 0.6);
+  color: #cbd5e1;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+.fourd-btn:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e2e8f0;
+}
+.fourd-btn:active {
+  transform: scale(0.93);
+}
+.fourd-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fourd-btn-primary {
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #6366f1;
+}
+.fourd-btn-primary:hover {
+  background: #4338ca;
 }

@@ -21,7 +21,7 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
       type: Phaser.AUTO,
       parent: containerRef.current,
       pixelArt: true,
-      backgroundColor: '#7ec850',
+      transparent: true,
       scale: {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.NO_CENTER,
@@ -49,6 +49,7 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
             const state = useStore.getState()
             scene.bridge.updateAgents(state.agents as any, state.activeAgent)
             scene.bridge.updatePhase(state.phase)
+            scene.bridge.updateSpeechBubbles(state.speechBubbles)
             // Notify parent
             onBridgeReady?.(scene.bridge)
           } else {
@@ -87,6 +88,15 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
       }
     )
     return unsubPhase
+  }, [])
+
+  useEffect(() => {
+    const unsubBubbles = useStore.subscribe((state) => {
+      if (bridgeRef.current) {
+        bridgeRef.current.updateSpeechBubbles(state.speechBubbles)
+      }
+    })
+    return unsubBubbles
   }, [])
 
   return (

@@ -13,6 +13,7 @@ import { ScenarioSelector } from './components/ScenarioSelector'
 import { ViewToggle } from './components/ViewToggle'
 import { PlaygroundView } from './components/PlaygroundView'
 import { ThreeDView } from './components/ThreeDView'
+import { FourDView } from './components/fourd/FourDView'
 import type { AgentId, ScenarioKey } from './types'
 import { AGENT_ORDER } from './types'
 
@@ -102,6 +103,8 @@ export default function App() {
         <PlaygroundView />
       ) : viewMode === '3d' ? (
         <ThreeDView />
+      ) : viewMode === '4d' ? (
+        <FourDView />
       ) : (
         <>
           {/* Main Content */}
@@ -111,7 +114,7 @@ export default function App() {
               className="absolute inset-0 flex flex-col"
               style={{ background: 'var(--color-panel)' }}
             >
-              <div className="flex-1 min-h-0 p-1">
+              <div className="flex-1 min-h-0">
                 <OfficeMap />
               </div>
             </div>

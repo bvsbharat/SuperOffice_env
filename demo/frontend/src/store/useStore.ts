@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   AgentId, GTMAgent, KPISnapshot, Message, SimEvent,
   EpisodeResult, Phase, ScenarioKey, Speed, GTMState, StepResult,
-  ViewMode, PanelVisibility, Theme,
+  ViewMode, PanelVisibility, Theme, StateSnapshot,
 } from '../types'
 import { AGENT_ORDER, ROOM_3D_POSITIONS } from '../types'
 
@@ -50,6 +50,12 @@ interface GTMStore {
   // Dedup
   lastProcessedStep: number
 
+  // 4D Timeline state
+  stateHistory: StateSnapshot[]
+  timelineStep: number | null
+  isTimelinePlaying: boolean
+  timelineSpeed: Speed
+
   // UI state
   speechBubbles: SpeechBubble[]
   coordArrows: CoordArrow[]
@@ -74,6 +80,11 @@ interface GTMStore {
   setViewMode: (mode: ViewMode) => void
   togglePanel: (panel: keyof PanelVisibility) => void
   toggleTheme: () => void
+  pushSnapshot: (snapshot: StateSnapshot) => void
+  setTimelineStep: (step: number | null) => void
+  setTimelinePlaying: (v: boolean) => void
+  setTimelineSpeed: (s: Speed) => void
+  clearHistory: () => void
 }
 
 const DEFAULT_AGENT = (id: AgentId): GTMAgent => ({
@@ -126,6 +137,11 @@ export const useStore = create<GTMStore>((set, get) => ({
     })
   ) as Record<AgentId, [number, number, number]>,
 
+  stateHistory: [],
+  timelineStep: null,
+  isTimelinePlaying: false,
+  timelineSpeed: 1,
+
   lastProcessedStep: -1,
   speechBubbles: [],
   coordArrows: [],
@@ -145,10 +161,11 @@ export const useStore = create<GTMStore>((set, get) => ({
 
     // Speech bubble for active agent
     const newBubbles = state.speechBubbles.filter(b => b.expiresAt > now)
-    if (result.activeAgent && result.reasoning) {
+    const reasoningText = result.reasoning || `Working on: ${result.task || 'current task'}`
+    if (result.activeAgent) {
       newBubbles.push({
         agentId: result.activeAgent,
-        text: result.reasoning,
+        text: reasoningText,
         expiresAt: now + 8000,
       })
     }
@@ -181,6 +198,20 @@ export const useStore = create<GTMStore>((set, get) => ({
       }, 2500)
     }
 
+    // Push snapshot for 4D timeline
+    const snapshot: StateSnapshot = {
+      step: fullState.step,
+      phase: fullState.phase,
+      activeAgent: result.activeAgent,
+      agents: { ...fullState.agents },
+      kpis: { ...fullState.kpis },
+      globalReward: fullState.global_reward,
+      cooperationScore: fullState.cooperation_score,
+      reasoning: result.reasoning || '',
+      task: result.task || '',
+      handoffTo: result.handoffTo,
+    }
+
     return {
       episode: fullState.episode,
       step: fullState.step,
@@ -200,6 +231,7 @@ export const useStore = create<GTMStore>((set, get) => ({
       lastProcessedStep: stepKey,
       speechBubbles: newBubbles,
       coordArrows: newArrows,
+      stateHistory: [...state.stateHistory, snapshot],
     }
   }),
 
@@ -220,6 +252,9 @@ export const useStore = create<GTMStore>((set, get) => ({
     events: s.events,
     speechBubbles: [],
     coordArrows: [],
+    stateHistory: [],
+    timelineStep: null,
+    isTimelinePlaying: false,
   }),
 
   setWsConnected: (v) => set({ wsConnected: v }),
@@ -239,7 +274,7 @@ export const useStore = create<GTMStore>((set, get) => ({
 
   setViewMode: (mode) => set({
     viewMode: mode,
-    panelVisibility: (mode === 'playground' || mode === '3d')
+    panelVisibility: (mode === 'playground' || mode === '3d' || mode === '4d')
       ? { rightSidebar: false, bottomPanel: false }
       : { rightSidebar: false, bottomPanel: true },
   }),
@@ -254,4 +289,13 @@ export const useStore = create<GTMStore>((set, get) => ({
     document.documentElement.classList.toggle('dark', next === 'dark')
     return { theme: next }
   }),
+
+  pushSnapshot: (snapshot) => set(s => ({
+    stateHistory: [...s.stateHistory, snapshot],
+  })),
+
+  setTimelineStep: (step) => set({ timelineStep: step }),
+  setTimelinePlaying: (v) => set({ isTimelinePlaying: v }),
+  setTimelineSpeed: (s) => set({ timelineSpeed: s }),
+  clearHistory: () => set({ stateHistory: [], timelineStep: null, isTimelinePlaying: false }),
 }))

@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import type { PhaserBridge } from '../game/OfficeScene'
 import { useStore } from '../store/useStore'
 import { AGENT_ORDER, ROOM_LABELS } from '../types'
-import type { AgentId } from '../types'
 import { ROOM_LABEL_POSITIONS, tileToPixel } from '../game/officeLayout'
 
 interface MapOverlaysProps {
@@ -21,24 +19,12 @@ const STATUS_COLORS: Record<string, string> = {
   done: '#6366f1',
 }
 
-const AGENT_COLORS: Record<AgentId, string> = {
-  ceo: '#ef4444',
-  hr: '#f97316',
-  marketing: '#eab308',
-  content: '#22c55e',
-  dev: '#3b82f6',
-  sales: '#8b5cf6',
-  scene: '#ec4899',
-  customer: '#06b6d4',
-}
-
 export function MapOverlays({ bridge }: MapOverlaysProps) {
   const [positions, setPositions] = useState<ScreenPositions | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef(0)
   const frameCount = useRef(0)
 
-  const speechBubbles = useStore((s) => s.speechBubbles)
   const agents = useStore((s) => s.agents)
 
   const updatePositions = useCallback(() => {
@@ -82,9 +68,6 @@ export function MapOverlays({ bridge }: MapOverlaysProps) {
 
   if (!positions) return null
 
-  const now = Date.now()
-  const activeBubbles = speechBubbles.filter((b) => b.expiresAt > now)
-
   return (
     <div ref={overlayRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 100, overflow: 'visible', transform: 'translateZ(1px)' }}>
       {/* Room Labels */}
@@ -105,44 +88,6 @@ export function MapOverlays({ bridge }: MapOverlaysProps) {
           </div>
         )
       })}
-
-      {/* Speech Bubbles */}
-      <AnimatePresence>
-        {activeBubbles.map((bubble) => {
-          const pos = positions.agents[bubble.agentId]
-          if (!pos) return null
-          const agent = agents[bubble.agentId]
-          const displayText =
-            bubble.text.length > 200
-              ? bubble.text.slice(0, 200) + '...'
-              : bubble.text
-          return (
-            <motion.div
-              key={`bubble-${bubble.agentId}-${bubble.expiresAt}`}
-              className="map-speech-bubble absolute"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2 }}
-              style={{
-                left: Math.max(160, Math.min(pos.x, (overlayRef.current?.clientWidth ?? 9999) - 160)),
-                top: Math.max(10, pos.y - 70),
-                transform: 'translate(-50%, -100%)',
-                zIndex: 50,
-              }}
-            >
-              <div
-                className="text-[13px] font-bold mb-0.5"
-                style={{ color: AGENT_COLORS[bubble.agentId] }}
-              >
-                {agent?.name?.split('/')[0] ?? bubble.agentId}
-              </div>
-              <div>{displayText}</div>
-              <div className="speech-bubble-tail" />
-            </motion.div>
-          )
-        })}
-      </AnimatePresence>
 
       {/* Status Badges */}
       {AGENT_ORDER.map((aid) => {

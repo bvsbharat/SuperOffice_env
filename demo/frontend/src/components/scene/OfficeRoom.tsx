@@ -753,7 +753,7 @@ function MarketingFurniture({ halfW, halfD, edgeColor }: { halfW: number; halfD:
       <StandingDesk position={[0.3, 0, -halfD + 0.35]} monitorColor={edgeColor} />
       <Whiteboard position={[-halfW + 0.25, 0, -halfD + 0.01]} hasScribbles />
       <Megaphone position={[halfW - 0.2, 0.2, -halfD + 0.12]} />
-      <Rug position={[0, 0.004, 0.1]} size={[1.2, 0.8]} color="#ec489922" />
+      <Rug position={[0, 0.004, 0.1]} size={[1.2, 0.8]} color="#ec4899" />
       <Chair position={[0.3, 0, -halfD + 0.6]} />
       <CubiclePanel position={[-0.3, 0.18, 0]} />
       <Plant position={[-halfW + 0.15, 0, halfD - 0.15]} leafColor="#22c55e" />
@@ -851,7 +851,10 @@ interface OfficeRoomProps {
   floorColor?: string
   agentId: AgentId
   roomName: string
+  rotationY?: number
 }
+
+const FURNITURE_SCALE = 2.0
 
 export function OfficeRoom({
   position,
@@ -860,12 +863,16 @@ export function OfficeRoom({
   floorColor = '#4a3422',
   agentId,
   roomName,
+  rotationY = 0,
 }: OfficeRoomProps) {
   const halfW = size[0] / 2
   const halfD = size[2] / 2
+  const wallHeight = 1.4
+  const fHalfW = halfW / FURNITURE_SCALE
+  const fHalfD = halfD / FURNITURE_SCALE
 
   return (
-    <group position={position}>
+    <group position={position} rotation={[0, rotationY, 0]}>
       {/* Floor — unique color per room */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[size[0], size[2]]} />
@@ -873,78 +880,109 @@ export function OfficeRoom({
       </mesh>
 
       {/* Subtle floor texture lines */}
-      {Array.from({ length: Math.floor(size[2] / 0.2) }).map((_, i) => (
-        <mesh key={`fp-${i}`} position={[0, 0.002, -halfD + (i + 1) * 0.2]} rotation={[-Math.PI / 2, 0, 0]}>
+      {Array.from({ length: Math.floor(size[2] / 0.25) }).map((_, i) => (
+        <mesh key={`fp-${i}`} position={[0, 0.002, -halfD + (i + 1) * 0.25]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[size[0], 0.005]} />
           <meshStandardMaterial color="#000000" transparent opacity={0.12} />
         </mesh>
       ))}
 
-      {/* Back wall — solid with agent-colored tint */}
-      <mesh position={[0, 0.3, -halfD + 0.015]}>
-        <boxGeometry args={[size[0], 0.6, 0.03]} />
-        <meshStandardMaterial
-          color={new THREE.Color(edgeColor).lerp(new THREE.Color('#e5e7eb'), 0.65)}
-          roughness={0.7}
-          metalness={0.05}
-        />
+      {/* Back wall — brick */}
+      <mesh position={[0, wallHeight / 2, -halfD + 0.015]}>
+        <boxGeometry args={[size[0], wallHeight, 0.03]} />
+        <meshStandardMaterial color="#8B6242" roughness={0.92} metalness={0} />
       </mesh>
+      {/* Back wall horizontal mortar lines */}
+      {Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, i) => (
+        <mesh key={`bh-${i}`} position={[0, (i + 1) * 0.18, -halfD + 0.032]}>
+          <boxGeometry args={[size[0], 0.008, 0.005]} />
+          <meshStandardMaterial color="#a07850" roughness={0.95} />
+        </mesh>
+      ))}
+      {/* Back wall vertical mortar lines */}
+      {Array.from({ length: Math.floor(size[0] / 0.25) }).map((_, i) => {
+        const x = -halfW + (i + 0.5) * 0.25
+        return Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, j) => (
+          <mesh key={`bv-${i}-${j}`} position={[x + (j % 2 === 0 ? 0 : 0.125), (j + 0.5) * 0.18, -halfD + 0.032]}>
+            <boxGeometry args={[0.008, 0.18, 0.005]} />
+            <meshStandardMaterial color="#a07850" roughness={0.95} />
+          </mesh>
+        ))
+      })}
 
-      {/* Room name on back wall */}
+      {/* Room name — cream text on brick wall */}
       <Text
-        position={[0, 0.48, -halfD + 0.035]}
-        fontSize={0.08}
-        color={edgeColor}
+        position={[0, wallHeight * 0.75, -halfD + 0.04]}
+        fontSize={0.12}
+        color="#fef3c7"
         anchorX="center"
         anchorY="middle"
         font={undefined}
-        maxWidth={size[0] - 0.3}
+        maxWidth={size[0] - 0.4}
       >
         {roomName}
       </Text>
 
-      {/* Side walls — half-height for visibility */}
-      <mesh position={[-halfW + 0.015, 0.15, 0]}>
-        <boxGeometry args={[0.03, 0.3, size[2]]} />
-        <meshStandardMaterial
-          color={new THREE.Color(edgeColor).lerp(new THREE.Color('#d1d5db'), 0.7)}
-          roughness={0.7}
-          transparent
-          opacity={0.5}
-        />
+      {/* Left side wall — brick */}
+      <mesh position={[-halfW + 0.015, wallHeight / 2, 0]}>
+        <boxGeometry args={[0.03, wallHeight, size[2]]} />
+        <meshStandardMaterial color="#8B6242" roughness={0.92} metalness={0} />
       </mesh>
-      <mesh position={[halfW - 0.015, 0.15, 0]}>
-        <boxGeometry args={[0.03, 0.3, size[2]]} />
-        <meshStandardMaterial
-          color={new THREE.Color(edgeColor).lerp(new THREE.Color('#d1d5db'), 0.7)}
-          roughness={0.7}
-          transparent
-          opacity={0.5}
-        />
-      </mesh>
+      {/* Left wall horizontal mortar */}
+      {Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, i) => (
+        <mesh key={`lh-${i}`} position={[-halfW + 0.032, (i + 1) * 0.18, 0]}>
+          <boxGeometry args={[0.005, 0.008, size[2]]} />
+          <meshStandardMaterial color="#a07850" roughness={0.95} />
+        </mesh>
+      ))}
+      {/* Left wall vertical mortar */}
+      {Array.from({ length: Math.floor(size[2] / 0.25) }).map((_, i) => {
+        const z = -halfD + (i + 0.5) * 0.25
+        return Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, j) => (
+          <mesh key={`lv-${i}-${j}`} position={[-halfW + 0.032, (j + 0.5) * 0.18, z + (j % 2 === 0 ? 0 : 0.125)]}>
+            <boxGeometry args={[0.005, 0.18, 0.008]} />
+            <meshStandardMaterial color="#a07850" roughness={0.95} />
+          </mesh>
+        ))
+      })}
 
-      {/* Floor edge trim */}
-      <mesh position={[0, 0.005, -halfD]}>
-        <boxGeometry args={[size[0] + 0.02, 0.015, 0.018]} />
-        <meshStandardMaterial color={edgeColor} emissive={edgeColor} emissiveIntensity={0.4} metalness={0.3} roughness={0.4} />
+      {/* Right side wall — brick */}
+      <mesh position={[halfW - 0.015, wallHeight / 2, 0]}>
+        <boxGeometry args={[0.03, wallHeight, size[2]]} />
+        <meshStandardMaterial color="#8B6242" roughness={0.92} metalness={0} />
       </mesh>
-      <mesh position={[0, 0.005, halfD]}>
-        <boxGeometry args={[size[0] + 0.02, 0.015, 0.018]} />
-        <meshStandardMaterial color={edgeColor} emissive={edgeColor} emissiveIntensity={0.4} metalness={0.3} roughness={0.4} />
-      </mesh>
+      {/* Right wall horizontal mortar */}
+      {Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, i) => (
+        <mesh key={`rh-${i}`} position={[halfW - 0.032, (i + 1) * 0.18, 0]}>
+          <boxGeometry args={[0.005, 0.008, size[2]]} />
+          <meshStandardMaterial color="#a07850" roughness={0.95} />
+        </mesh>
+      ))}
+      {/* Right wall vertical mortar */}
+      {Array.from({ length: Math.floor(size[2] / 0.25) }).map((_, i) => {
+        const z = -halfD + (i + 0.5) * 0.25
+        return Array.from({ length: Math.floor(wallHeight / 0.18) }).map((_, j) => (
+          <mesh key={`rv-${i}-${j}`} position={[halfW - 0.032, (j + 0.5) * 0.18, z + (j % 2 === 0 ? 0 : 0.125)]}>
+            <boxGeometry args={[0.005, 0.18, 0.008]} />
+            <meshStandardMaterial color="#a07850" roughness={0.95} />
+          </mesh>
+        ))
+      })}
 
-      {/* Per-room furniture */}
-      {agentId === 'ceo' && <CEOFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'hr' && <HRFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'marketing' && <MarketingFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'content' && <ContentFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'dev' && <DevFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'sales' && <SalesFurniture halfW={halfW} halfD={halfD} edgeColor={edgeColor} />}
-      {agentId === 'scene' && <SceneRoomFurniture halfW={halfW} halfD={halfD} />}
-      {agentId === 'customer' && <LobbyFurniture halfW={halfW} halfD={halfD} />}
+      {/* Per-room furniture — scaled up */}
+      <group scale={FURNITURE_SCALE}>
+        {agentId === 'ceo' && <CEOFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'hr' && <HRFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'marketing' && <MarketingFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'content' && <ContentFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'dev' && <DevFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'sales' && <SalesFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
+        {agentId === 'scene' && <SceneRoomFurniture halfW={fHalfW} halfD={fHalfD} />}
+        {agentId === 'customer' && <LobbyFurniture halfW={fHalfW} halfD={fHalfD} />}
+      </group>
 
       {/* Room ambient light */}
-      <pointLight position={[0, 0.6, 0]} color={edgeColor} intensity={0.3} distance={4} />
+      <pointLight position={[0, 1.0, 0]} color={edgeColor} intensity={0.4} distance={5} />
     </group>
   )
 }

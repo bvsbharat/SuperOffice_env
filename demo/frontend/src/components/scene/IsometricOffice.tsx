@@ -1,9 +1,9 @@
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { OrbitControls, Html } from '@react-three/drei'
+import { OrbitControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../../store/useStore'
-import { AGENT_ORDER, AGENT_3D_CONFIG, ROOM_3D_POSITIONS, ROOM_FLOOR_COLORS } from '../../types'
+import { AGENT_ORDER, AGENT_3D_CONFIG, ROOM_3D_POSITIONS, ROOM_FLOOR_COLORS, ROOM_ROTATIONS } from '../../types'
 import type { AgentId } from '../../types'
 import { OfficeRoom } from './OfficeRoom'
 import { AgentBot } from './AgentBot'
@@ -48,51 +48,42 @@ function FloatingParticles() {
 function WoodFloor() {
   return (
     <group>
+      {/* Large wooden floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
-        <planeGeometry args={[22, 22]} />
-        <meshStandardMaterial color="#5a4030" roughness={0.85} />
+        <planeGeometry args={[40, 40]} />
+        <meshStandardMaterial color="#8B7355" roughness={0.85} />
       </mesh>
-      {Array.from({ length: 88 }).map((_, i) => (
-        <mesh key={`plank-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.018, -11 + i * 0.25]}>
-          <planeGeometry args={[22, 0.006]} />
-          <meshStandardMaterial color="#3a2818" transparent opacity={0.4} />
+      {/* Subtle plank lines */}
+      {Array.from({ length: 80 }).map((_, i) => (
+        <mesh key={`plank-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.018, -20 + i * 0.5]}>
+          <planeGeometry args={[40, 0.006]} />
+          <meshStandardMaterial color="#6B5B45" transparent opacity={0.25} />
         </mesh>
       ))}
-      {Array.from({ length: 32 }).map((_, i) => (
-        <mesh key={`grain-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[-11 + i * 0.7, -0.017, 0]}>
-          <planeGeometry args={[0.35, 22]} />
+      {/* Cross-grain lines */}
+      {Array.from({ length: 28 }).map((_, i) => (
+        <mesh key={`grain-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[-14 + i * 1.0, -0.017, 0]}>
+          <planeGeometry args={[0.4, 40]} />
           <meshStandardMaterial
-            color={i % 3 === 0 ? '#6a5038' : i % 3 === 1 ? '#4a3420' : '#5a4230'}
+            color={i % 3 === 0 ? '#7a6a50' : '#6B5B45'}
             transparent
-            opacity={0.25}
+            opacity={0.15}
           />
         </mesh>
       ))}
-      {/* Corridor carpet runner between columns */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-0.5, -0.015, 0]}>
-        <planeGeometry args={[1.8, 18]} />
-        <meshStandardMaterial color="#6b4530" roughness={0.95} />
-      </mesh>
     </group>
   )
 }
 
-function RoomLabel({ position, text, color }: { position: [number, number, number]; text: string; color: string }) {
-  return (
-    <Html position={position} center transform={false} zIndexRange={[1, 0]} style={{ pointerEvents: 'none' }}>
-      <div style={{
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: '9px',
-        color: color,
-        textShadow: `0 0 8px ${color}88`,
-        whiteSpace: 'nowrap',
-        letterSpacing: '2px',
-        userSelect: 'none',
-      }}>
-        {text}
-      </div>
-    </Html>
-  )
+// Rotate a local offset by Y-axis rotation
+function rotateOffset(offset: [number, number, number], rotY: number): [number, number, number] {
+  const cos = Math.cos(rotY)
+  const sin = Math.sin(rotY)
+  return [
+    offset[0] * cos + offset[2] * sin,
+    offset[1],
+    -offset[0] * sin + offset[2] * cos,
+  ]
 }
 
 // Hallway decorations
@@ -254,16 +245,7 @@ function DirectionalSign({ position, rotation = 0 }: { position: [number, number
   )
 }
 
-function CeilingBeam({ position, length = 4 }: { position: [number, number, number]; length?: number }) {
-  return (
-    <mesh position={position}>
-      <boxGeometry args={[0.08, 0.04, length]} />
-      <meshStandardMaterial color="#4a3420" roughness={0.8} transparent opacity={0.6} />
-    </mesh>
-  )
-}
-
-const ROOM_SIZE: [number, number, number] = [3.8, 1.0, 2.4]
+const ROOM_SIZE: [number, number, number] = [5.0, 1.5, 3.4]
 
 export function OfficeScene3D() {
   const speechBubbles = useStore(s => s.speechBubbles)
@@ -275,20 +257,26 @@ export function OfficeScene3D() {
 
   return (
     <>
-      {/* Warm bright lighting */}
-      <ambientLight intensity={1.4} />
-      <directionalLight position={[10, 16, 8]} intensity={1.6} color="#fff8f0" castShadow />
-      <directionalLight position={[-8, 12, -6]} intensity={0.8} color="#e8e0f0" />
-      <directionalLight position={[0, 10, 10]} intensity={0.4} color="#fff5e6" />
-      <hemisphereLight args={['#fef3c7', '#ede9fe', 0.5]} />
+      {/* Lighting — normal, clean */}
+      <ambientLight intensity={1.0} />
+      <directionalLight
+        position={[20, 30, 10]}
+        intensity={1.2}
+        color="#ffffff"
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+      />
 
+      <Environment preset="city" />
       <WoodFloor />
       <FloatingParticles />
 
-      {/* 8 Rooms — with per-room furniture */}
+      {/* 8 Rooms — L-shape layout with per-room rotation */}
       {AGENT_ORDER.map((aid) => {
         const pos = ROOM_3D_POSITIONS[aid]
         const config = AGENT_3D_CONFIG[aid]
+        const rotY = ROOM_ROTATIONS[aid]
         return (
           <OfficeRoom
             key={aid}
@@ -299,34 +287,29 @@ export function OfficeScene3D() {
             floorColor={ROOM_FLOOR_COLORS[aid]}
             agentId={aid}
             roomName={config.roomLabel}
+            rotationY={rotY}
           />
         )
       })}
 
-      {/* Room Labels — above rooms */}
-      {AGENT_ORDER.map((aid) => {
-        const pos = ROOM_3D_POSITIONS[aid]
-        const config = AGENT_3D_CONFIG[aid]
-        return (
-          <RoomLabel
-            key={`label-${aid}`}
-            position={[pos[0], 0.7, pos[2] - ROOM_SIZE[2] / 2 - 0.2]}
-            text={config.roomLabel}
-            color={config.color}
-          />
-        )
-      })}
-
-      {/* Agent characters — use animated positions from store */}
+      {/* Agent characters — use rotation-aware home positions */}
       {AGENT_ORDER.map((aid) => {
         const config = AGENT_3D_CONFIG[aid]
         const homePos = ROOM_3D_POSITIONS[aid]
-        const targetPos = agentPositions[aid] ?? [homePos[0] + 0.4, homePos[1], homePos[2] + 0.3]
+        const rotY = ROOM_ROTATIONS[aid]
+        const localOffset: [number, number, number] = [0.4, 0, 0.3]
+        const worldOffset = rotateOffset(localOffset, rotY)
+        const homeWorld: [number, number, number] = [
+          homePos[0] + worldOffset[0],
+          homePos[1] + worldOffset[1],
+          homePos[2] + worldOffset[2],
+        ]
+        const targetPos = agentPositions[aid] ?? homeWorld
         return (
           <AgentBot
             key={`bot-${aid}`}
             agentId={aid}
-            position={[homePos[0] + 0.4, homePos[1], homePos[2] + 0.3]}
+            position={homeWorld}
             targetPosition={targetPos}
             color={config.color}
             accentColor={config.accentColor}
@@ -335,59 +318,56 @@ export function OfficeScene3D() {
         )
       })}
 
-      {/* === Hallway decorations === */}
-      {/* Center corridor plants */}
-      <HallwayPlant position={[-0.5, 0, -5.0]} />
-      <HallwayPlant position={[-0.5, 0, -1.8]} />
-      <HallwayPlant position={[-0.5, 0, 1.4]} />
-      <HallwayPlant position={[-0.5, 0, 4.6]} />
+      {/* === Hallway decorations — repositioned for L-shape layout === */}
+      {/* Center area plants */}
+      <HallwayPlant position={[0, 0, 0]} />
+      <HallwayPlant position={[0, 0, 3.5]} />
+      <HallwayPlant position={[-3.5, 0, 2.0]} />
+      <HallwayPlant position={[3.5, 0, 2.0]} />
 
-      {/* Floor lamps along corridors */}
-      <FloorLamp position={[-0.5, 0, -3.4]} color="#fbbf24" />
-      <FloorLamp position={[-0.5, 0, -0.2]} color="#a78bfa" />
-      <FloorLamp position={[-0.5, 0, 3.0]} color="#34d399" />
+      {/* Floor lamps in corridors */}
+      <FloorLamp position={[0, 0, -3.0]} color="#fbbf24" />
+      <FloorLamp position={[-4.0, 0, 6.0]} color="#a78bfa" />
+      <FloorLamp position={[4.0, 0, 6.0]} color="#34d399" />
 
       {/* Large potted trees on perimeter */}
-      <LargePottedTree position={[-7.5, 0, -6.0]} />
-      <LargePottedTree position={[6.5, 0, -6.0]} />
-      <LargePottedTree position={[-7.5, 0, 6.0]} />
-      <LargePottedTree position={[6.5, 0, 6.0]} />
-      <LargePottedTree position={[-7.5, 0, 0]} />
-      <LargePottedTree position={[6.5, 0, 0]} />
+      <LargePottedTree position={[-10.5, 0, -7.0]} />
+      <LargePottedTree position={[10.5, 0, -7.0]} />
+      <LargePottedTree position={[-10.5, 0, 2.0]} />
+      <LargePottedTree position={[10.5, 0, 2.0]} />
+      <LargePottedTree position={[-10.5, 0, 7.0]} />
+      <LargePottedTree position={[10.5, 0, 7.0]} />
+      <LargePottedTree position={[-10.5, 0, 12.0]} />
+      <LargePottedTree position={[10.5, 0, 12.0]} />
 
       {/* Water dispensers */}
-      <WaterDispenser position={[6.5, 0, -3.0]} />
-      <WaterDispenser position={[-7.5, 0, 3.0]} />
+      <WaterDispenser position={[0, 0, 6.5]} />
+      <WaterDispenser position={[-4.0, 0, -3.0]} />
 
-      {/* Benches in hallways */}
-      <Bench position={[-0.5, 0, -6.5]} />
-      <Bench position={[-0.5, 0, 6.5]} />
+      {/* Benches in central area */}
+      <Bench position={[0, 0, -1.5]} />
+      <Bench position={[0, 0, 5.5]} />
 
       {/* Vending machine */}
-      <VendingMachine position={[6.5, 0, 3.0]} />
+      <VendingMachine position={[4.0, 0, -3.0]} />
 
       {/* Fire extinguishers */}
-      <FireExtinguisher position={[-7.2, 0, -3.0]} />
-      <FireExtinguisher position={[6.2, 0, 1.0]} />
+      <FireExtinguisher position={[-10.0, 0, -3.5]} />
+      <FireExtinguisher position={[10.0, 0, -3.5]} />
 
       {/* Trash cans */}
-      <TrashCan position={[-0.5, 0.05, -3.8]} />
-      <TrashCan position={[-0.5, 0.05, 3.2]} />
+      <TrashCan position={[0, 0.05, 2.0]} />
+      <TrashCan position={[-3.5, 0.05, 6.5]} />
 
       {/* Directional signs */}
-      <DirectionalSign position={[-0.5, 0, -7.0]} rotation={0} />
-      <DirectionalSign position={[-0.5, 0, 7.0]} rotation={Math.PI} />
+      <DirectionalSign position={[0, 0, -3.5]} rotation={0} />
+      <DirectionalSign position={[0, 0, 6.0]} rotation={Math.PI} />
 
-      {/* Ceiling beams for corridor feel */}
-      <CeilingBeam position={[-0.5, 2.0, 0]} length={18} />
-      <CeilingBeam position={[-4.5, 2.0, 0]} length={18} />
-      <CeilingBeam position={[3.5, 2.0, 0]} length={18} />
-
-      {/* Extra hallway plants */}
-      <HallwayPlant position={[-7.0, 0, -1.0]} />
-      <HallwayPlant position={[6.0, 0, -1.0]} />
-      <HallwayPlant position={[-7.0, 0, 4.0]} />
-      <HallwayPlant position={[6.0, 0, 4.0]} />
+      {/* Extra hallway plants around perimeter */}
+      <HallwayPlant position={[-5.5, 0, -3.0]} />
+      <HallwayPlant position={[5.5, 0, -3.0]} />
+      <HallwayPlant position={[-4.0, 0, 10.0]} />
+      <HallwayPlant position={[4.0, 0, 10.0]} />
 
       {/* Speech bubbles */}
       {speechBubbles
@@ -420,9 +400,8 @@ export function OfficeScene3D() {
           )
         })}
 
-      {/* Background */}
-      <color attach="background" args={[theme === 'dark' ? '#1e1b2e' : '#f5f0e8']} />
-      <fog attach="fog" args={[theme === 'dark' ? '#1e1b2e' : '#f5f0e8', 18, 35]} />
+      {/* Background — sky blue / dark navy */}
+      <color attach="background" args={[theme === 'dark' ? '#0f172a' : '#bae6fd']} />
 
       <OrbitControls
         makeDefault
@@ -430,10 +409,10 @@ export function OfficeScene3D() {
         enableZoom
         enableRotate
         minDistance={4}
-        maxDistance={22}
+        maxDistance={40}
         minPolarAngle={Math.PI / 6}
         maxPolarAngle={Math.PI / 2.8}
-        target={[-0.5, 0, 0]}
+        target={[0, 0, 3.0]}
       />
     </>
   )
