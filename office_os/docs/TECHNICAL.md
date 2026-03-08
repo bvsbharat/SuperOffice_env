@@ -177,7 +177,7 @@ Scores each completion on structural correctness (0.0 to ~1.45):
 
 **Reward Function 2: LLM-as-a-Judge** (`llm_judge_reward`)
 
-Uses the **local vLLM (Qwen 2.5 3B-Instruct base model)** to rate each completion on strategic quality. The judge scores on a 1-5 scale:
+A configurable LLM judge rates each completion on strategic quality using a 1-5 scale:
 
 | Score | Meaning |
 |-------|---------|
@@ -187,7 +187,16 @@ Uses the **local vLLM (Qwen 2.5 3B-Instruct base model)** to rate each completio
 | 4 (→ 0.75) | Good action with clear strategic reasoning |
 | 5 (→ 1.0) | Excellent — right action, specific target, strong reasoning, good team communication |
 
-The judge runs at temperature 0.0 with max 8 tokens. Falls back to 0.5 (neutral) on any error to avoid blocking training.
+The judge provider is configurable via `JUDGE_PROVIDER` env var:
+
+| Provider | Default Model | Env Vars Needed |
+|----------|---------------|-----------------|
+| `bedrock` (default) | Claude Sonnet 4 (`us.anthropic.claude-sonnet-4-20250514-v1:0`) | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| `anthropic` | Claude Sonnet 4 (`claude-sonnet-4-20250514`) | `ANTHROPIC_API_KEY` |
+| `openrouter` | Claude Sonnet 4 (`anthropic/claude-sonnet-4`) | `OPENROUTER_API_KEY` |
+| `vllm` | Local Qwen 2.5 3B-Instruct | None (uses local vLLM) |
+
+Bedrock is the default when `CLAUDE_CODE_USE_BEDROCK` is set. Override the model with `JUDGE_MODEL` or `--judge-model`. Falls back to 0.5 (neutral) on any error to avoid blocking training.
 
 Both reward functions are passed to TRL's `GRPOTrainer` as `reward_funcs=[score_completion, llm_judge_reward]`.
 

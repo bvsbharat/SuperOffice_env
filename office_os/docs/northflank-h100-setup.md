@@ -54,6 +54,11 @@ In Northflank service > **Environment**:
 | `HF_REPO` | Yes | HuggingFace repo for LoRA checkpoints | `YourUser/office-os-loras` |
 | `WANDB_API_KEY` | Yes | Weights & Biases API key | `xxx` |
 | `WANDB_PROJECT` | No | W&B project name | `office-os` (default) |
+| `JUDGE_PROVIDER` | No | LLM-as-a-judge backend: `bedrock`, `anthropic`, `openrouter`, `vllm` | `bedrock` (default) |
+| `JUDGE_MODEL` | No | Override judge model ID | `claude-sonnet-4-20250514` |
+| `OPENROUTER_API_KEY` | No | Required if `JUDGE_PROVIDER=openrouter` | `sk-or-xxx` |
+| `AWS_ACCESS_KEY_ID` | No | Required if `JUDGE_PROVIDER=bedrock` | `AKIA...` |
+| `AWS_SECRET_ACCESS_KEY` | No | Required if `JUDGE_PROVIDER=bedrock` | `...` |
 
 ## Step 3: Clone the Repo
 

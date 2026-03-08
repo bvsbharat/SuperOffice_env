@@ -44,6 +44,12 @@ _lora_output_dir = "/tmp/office_os_lora"
 _hf_repo = ""       # e.g. "username/office-os-loras"
 _wandb_project = "" # e.g. "office-os"
 
+# LLM-as-a-judge configuration
+# Providers: "bedrock" (default), "anthropic", "openrouter", "vllm"
+_judge_provider = os.environ.get("JUDGE_PROVIDER", "bedrock" if os.environ.get("CLAUDE_CODE_USE_BEDROCK") else "vllm")
+_judge_model = os.environ.get("JUDGE_MODEL", "")  # Auto-detected per provider if empty
+_openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
+
 ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr"]
 SKIP_TRAINING = {"customer"}  # Customer role uses base model, no LoRA needed
 
@@ -52,11 +58,81 @@ for role in ALL_ROLES:
     _train_steps[role] = 0
 
 
-def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
-    """Use the local vLLM as an LLM-as-a-judge to score a completion.
+def _get_judge_model() -> str:
+    """Get the judge model name, with sensible defaults per provider."""
+    if _judge_model:
+        return _judge_model
+    defaults = {
+        "bedrock": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "anthropic": "claude-sonnet-4-20250514",
+        "openrouter": "anthropic/claude-sonnet-4",
+        "vllm": _base_model,
+    }
+    return defaults.get(_judge_provider, _base_model)
 
-    Returns a score from 0.0 to 1.0 based on strategic quality.
-    Falls back to 0.5 (neutral) on any error to avoid blocking training.
+
+def _judge_via_bedrock(prompt: str) -> str | None:
+    """Call Claude via AWS Bedrock."""
+    import boto3
+    region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    client = boto3.client("bedrock-runtime", region_name=region)
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "messages": [{"role": "user", "content": prompt}],
+    })
+    resp = client.invoke_model(modelId=_get_judge_model(), body=body, contentType="application/json")
+    result = json.loads(resp["body"].read())
+    return result["content"][0]["text"].strip()
+
+
+def _judge_via_anthropic(prompt: str) -> str | None:
+    """Call Claude via Anthropic API."""
+    import anthropic
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model=_get_judge_model(),
+        max_tokens=8,
+        temperature=0.0,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.content[0].text.strip()
+
+
+def _judge_via_openai_compat(prompt: str, base_url: str, api_key: str, model: str) -> str | None:
+    """Call any OpenAI-compatible endpoint (OpenRouter, vLLM)."""
+    import urllib.request
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 8,
+        "temperature": 0.0,
+    }).encode()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=payload, method="POST", headers=headers,
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        result = json.loads(resp.read().decode())
+        return result["choices"][0]["message"]["content"].strip()
+
+
+def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
+    """LLM-as-a-judge to score a completion.
+
+    Provider is configured via JUDGE_PROVIDER env var:
+      - "bedrock"    — Claude via AWS Bedrock (default when CLAUDE_CODE_USE_BEDROCK is set)
+      - "anthropic"  — Claude via Anthropic API (needs ANTHROPIC_API_KEY)
+      - "openrouter" — Any model via OpenRouter (needs OPENROUTER_API_KEY)
+      - "vllm"       — Local vLLM on the same machine (default fallback)
+
+    Model is configured via JUDGE_MODEL env var (auto-detected per provider if unset).
+
+    Returns a score from 0.0 to 1.0. Falls back to 0.5 on any error.
     """
     actions_str = ", ".join(valid_actions)
     judge_prompt = (
@@ -72,28 +148,27 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
         f"Reply with ONLY a single number (1-5)."
     )
     try:
-        import urllib.request
-        payload = json.dumps({
-            "model": _base_model,
-            "messages": [{"role": "user", "content": judge_prompt}],
-            "max_tokens": 8,
-            "temperature": 0.0,
-        }).encode()
-        req = urllib.request.Request(
-            f"{_vllm_url}/v1/chat/completions",
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read().decode())
-            reply = result["choices"][0]["message"]["content"].strip()
-            # Extract first digit 1-5
+        reply = None
+        if _judge_provider == "bedrock":
+            reply = _judge_via_bedrock(judge_prompt)
+        elif _judge_provider == "anthropic":
+            reply = _judge_via_anthropic(judge_prompt)
+        elif _judge_provider == "openrouter":
+            reply = _judge_via_openai_compat(
+                judge_prompt, "https://openrouter.ai/api", _openrouter_api_key, _get_judge_model(),
+            )
+        else:  # "vllm" or unknown — use local vLLM
+            reply = _judge_via_openai_compat(
+                judge_prompt, _vllm_url, "", _get_judge_model(),
+            )
+
+        if reply:
             for ch in reply:
                 if ch.isdigit() and ch in "12345":
                     return (int(ch) - 1) / 4.0  # Normalize: 1->0.0, 5->1.0
         return 0.5
-    except Exception:
+    except Exception as e:
+        logger.debug(f"LLM judge ({_judge_provider}) failed: {e}")
         return 0.5  # Neutral on failure — don't block training
 
 
@@ -400,6 +475,8 @@ class Handler(BaseHTTPRequestHandler):
                 "train_steps": _train_steps,
                 "base_model": _base_model,
                 "lora_output_dir": _lora_output_dir,
+                "judge_provider": _judge_provider,
+                "judge_model": _get_judge_model(),
             })
         elif self.path == "/models":
             self._json(200, {
@@ -477,19 +554,30 @@ def main():
                    help="HuggingFace repo to push LoRAs (e.g. username/office-os-loras)")
     p.add_argument("--wandb-project", type=str, default="",
                    help="Weights & Biases project name for logging")
+    p.add_argument("--judge-provider", type=str, default="",
+                   help="LLM judge provider: bedrock, anthropic, openrouter, vllm (default: bedrock if CLAUDE_CODE_USE_BEDROCK set, else vllm)")
+    p.add_argument("--judge-model", type=str, default="",
+                   help="LLM judge model (auto-detected per provider if unset)")
     args = p.parse_args()
 
     global _base_model, _vllm_url, _lora_output_dir, _hf_repo, _wandb_project
+    global _judge_provider, _judge_model, _openrouter_api_key
     _base_model = args.base_model
     _vllm_url = args.vllm_url
     _lora_output_dir = args.lora_dir
     _hf_repo = args.hf_repo or os.environ.get("HF_REPO", "")
     _wandb_project = args.wandb_project or os.environ.get("WANDB_PROJECT", "")
+    if args.judge_provider:
+        _judge_provider = args.judge_provider
+    if args.judge_model:
+        _judge_model = args.judge_model
+    _openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
     logger.info(f"TRL GRPO Training Worker on {args.host}:{args.port}")
     logger.info(f"Base model: {_base_model}")
     logger.info(f"vLLM server: {_vllm_url}")
     logger.info(f"LoRA output: {_lora_output_dir}")
+    logger.info(f"LLM Judge: provider={_judge_provider}, model={_get_judge_model()}")
     logger.info(f"Endpoints:")
     logger.info(f"  GET  /health   - Status")
     logger.info(f"  POST /train    - Train a role with GRPO")
