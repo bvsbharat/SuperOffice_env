@@ -130,14 +130,7 @@ function AgentHair({ index, hairColor }: { index: number; hairColor: THREE.Color
           </mesh>
         </group>
       )
-    case 6: // Scene - buzz cut
-      return (
-        <mesh position={[0, 0.04, -0.01]} scale={[1.02, 0.65, 1.02]}>
-          <sphereGeometry args={[0.124, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
-          <meshStandardMaterial color={hairColor.clone().lerp(new THREE.Color('#1a1a1a'), 0.15)} roughness={0.85} />
-        </mesh>
-      )
-    case 7: // Customer - long flowing
+    case 6: // Customer - long flowing
     default:
       return (
         <group>

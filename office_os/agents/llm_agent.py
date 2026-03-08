@@ -164,7 +164,16 @@ class LLMAgent:
                     time.sleep(2)
 
         if action is None:
-            raise RuntimeError(f"{mode} model failed after 5 attempts for {self.role}")
+            # Fallback: pick a random valid action instead of crashing
+            import random
+            fallback_action = random.choice(self._allowed_actions)
+            logger.warning(f"{mode} failed after 5 attempts for {self.role}, falling back to random action: {fallback_action}")
+            action = AgentAction(
+                action_type=fallback_action,
+                target="",
+                parameters={},
+                reasoning=f"Fallback: {mode} model could not produce a valid action",
+            )
 
         result = action.model_dump()
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
@@ -184,12 +193,22 @@ class LLMAgent:
             f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": null}}"
         )
 
+        system_content = self.system_prompt + json_instruction
+
+        # Truncate user message if needed to stay within 4096 context window.
+        # Rough estimate: 1 token ≈ 4 chars. Reserve 256 tokens for output.
+        max_input_chars = (4096 - 256) * 4  # ~15360 chars for input
+        system_chars = len(system_content)
+        max_user_chars = max_input_chars - system_chars
+        if len(user_msg) > max_user_chars:
+            user_msg = user_msg[:max_user_chars] + "\n[... truncated for context limit]"
+
         response = self.openai_client.chat.completions.create(
             model=self._art_endpoint["model_name"],
-            max_tokens=512,
+            max_tokens=256,
             temperature=0.7,
             messages=[
-                {"role": "system", "content": self.system_prompt + json_instruction},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": user_msg},
             ],
         )

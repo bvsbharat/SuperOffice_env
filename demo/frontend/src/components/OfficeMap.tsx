@@ -8,10 +8,67 @@ export function OfficeMap() {
   const [tilt, setTilt] = useState(0)
 
   return (
-    <div className="w-full h-full relative" style={{ background: 'rgb(153 255 105)', perspective: '1200px', overflow: 'visible' }}>
+    <div className="w-full h-full relative flex justify-center" style={{ background: '#99ff69', perspective: '1200px', overflow: 'hidden' }}>
+      {/* Jungle background overlay — matches canvas green */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0, opacity: 0.35 }}>
+        {/* Left side tree canopies */}
+        <circle cx="4%" cy="10%" r="20" fill="#6abf3a" />
+        <circle cx="3%" cy="11%" r="15" fill="#7cd44e" />
+        <circle cx="7%" cy="8%" r="12" fill="#5eaa30" />
+        <circle cx="9%" cy="25%" r="24" fill="#6abf3a" />
+        <circle cx="6%" cy="23%" r="18" fill="#7cd44e" />
+        <circle cx="12%" cy="26%" r="14" fill="#5eaa30" />
+        <circle cx="3%" cy="45%" r="22" fill="#6abf3a" />
+        <circle cx="6%" cy="42%" r="16" fill="#7cd44e" />
+        <circle cx="8%" cy="47%" r="13" fill="#5eaa30" />
+        <circle cx="5%" cy="65%" r="26" fill="#6abf3a" />
+        <circle cx="3%" cy="62%" r="20" fill="#7cd44e" />
+        <circle cx="9%" cy="68%" r="15" fill="#5eaa30" />
+        <circle cx="4%" cy="85%" r="22" fill="#6abf3a" />
+        <circle cx="7%" cy="82%" r="17" fill="#7cd44e" />
+        <circle cx="10%" cy="87%" r="13" fill="#5eaa30" />
+        <circle cx="2%" cy="55%" r="18" fill="#5eaa30" />
+        <circle cx="11%" cy="38%" r="11" fill="#7cd44e" />
+        <circle cx="1%" cy="75%" r="16" fill="#6abf3a" />
+        {/* Right side tree canopies */}
+        <circle cx="96%" cy="8%" r="20" fill="#6abf3a" />
+        <circle cx="94%" cy="10%" r="15" fill="#7cd44e" />
+        <circle cx="98%" cy="6%" r="12" fill="#5eaa30" />
+        <circle cx="91%" cy="28%" r="24" fill="#6abf3a" />
+        <circle cx="95%" cy="25%" r="18" fill="#7cd44e" />
+        <circle cx="89%" cy="30%" r="14" fill="#5eaa30" />
+        <circle cx="97%" cy="48%" r="22" fill="#6abf3a" />
+        <circle cx="94%" cy="45%" r="16" fill="#7cd44e" />
+        <circle cx="91%" cy="50%" r="13" fill="#5eaa30" />
+        <circle cx="95%" cy="68%" r="26" fill="#6abf3a" />
+        <circle cx="98%" cy="65%" r="20" fill="#7cd44e" />
+        <circle cx="92%" cy="71%" r="15" fill="#5eaa30" />
+        <circle cx="96%" cy="88%" r="22" fill="#6abf3a" />
+        <circle cx="93%" cy="85%" r="17" fill="#7cd44e" />
+        <circle cx="99%" cy="91%" r="13" fill="#5eaa30" />
+        <circle cx="88%" cy="55%" r="11" fill="#7cd44e" />
+        <circle cx="98%" cy="37%" r="16" fill="#6abf3a" />
+        <circle cx="90%" cy="78%" r="18" fill="#5eaa30" />
+        {/* Scattered smaller bushes */}
+        <circle cx="14%" cy="15%" r="8" fill="#7cd44e" />
+        <circle cx="86%" cy="18%" r="9" fill="#7cd44e" />
+        <circle cx="13%" cy="50%" r="7" fill="#6abf3a" />
+        <circle cx="87%" cy="60%" r="8" fill="#6abf3a" />
+        <circle cx="15%" cy="72%" r="9" fill="#7cd44e" />
+        <circle cx="85%" cy="42%" r="7" fill="#7cd44e" />
+        {/* Trunk hints */}
+        <rect x="3.5%" y="12%" width="3" height="10" rx="1" fill="#8B6914" opacity="0.25" />
+        <rect x="8.5%" y="26%" width="3" height="12" rx="1" fill="#8B6914" opacity="0.25" />
+        <rect x="95%" y="9%" width="3" height="10" rx="1" fill="#8B6914" opacity="0.25" />
+        <rect x="91%" y="29%" width="3" height="12" rx="1" fill="#8B6914" opacity="0.25" />
+        <rect x="4%" y="66%" width="3" height="10" rx="1" fill="#8B6914" opacity="0.25" />
+        <rect x="95%" y="69%" width="3" height="10" rx="1" fill="#8B6914" opacity="0.25" />
+      </svg>
       <div
-        className="w-full h-full relative"
+        className="h-full relative"
         style={{
+          width: '100%',
+          maxWidth: '1020px',
           transform: `rotateX(${tilt}deg) scale(${1 + (tilt / 45) * 0.35})`,
           transformOrigin: '50% 50%',
           zIndex: 1,

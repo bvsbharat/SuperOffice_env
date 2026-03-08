@@ -441,3 +441,675 @@
 2026-03-07 17:03:05,507 agents.llm_agent WARNING: dev picked invalid 'SEND_DIRECTIVE', retrying...
 2026-03-07 17:03:06,417 agents.llm_agent WARNING: dev picked invalid 'ALLOCATE_BUDGET', retrying...
 2026-03-07 17:05:30,040 agents.llm_agent WARNING: LLM attempt 1/3 for sales: JSONDecodeError: Expecting ',' delimiter: line 3497 column 1 (char 18047)
+2026-03-07 20:32:18,988 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:33:07,277 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:34:20,598 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:35:18,828 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:19,423 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:19,889 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:20,441 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:20,927 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:21,296 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:35:21,777 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:53,035 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:53,471 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:54,038 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:54,451 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:54,878 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:55,311 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:36:55,687 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:37:21,922 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (1/5)...
+2026-03-07 20:37:23,148 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (2/5)...
+2026-03-07 20:37:24,404 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (3/5)...
+2026-03-07 20:37:25,711 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (4/5)...
+2026-03-07 20:37:27,332 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (5/5)...
+2026-03-07 20:38:19,588 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:38:29,352 agents.llm_agent WARNING: ART attempt 1/5 for sales: InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+2026-03-07 20:38:29,357 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+
+2026-03-07 20:38:33,362 agents.llm_agent WARNING: ART attempt 2/5 for sales: InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+2026-03-07 20:38:33,363 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+
+2026-03-07 20:38:37,484 agents.llm_agent WARNING: ART attempt 3/5 for sales: InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+2026-03-07 20:38:37,485 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+
+2026-03-07 20:38:41,768 agents.llm_agent WARNING: ART attempt 4/5 for sales: InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+2026-03-07 20:38:41,769 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+
+2026-03-07 20:38:45,911 agents.llm_agent WARNING: ART attempt 5/5 for sales: InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+2026-03-07 20:38:45,913 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.InternalServerError: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused
+
+2026-03-07 20:39:33,548 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:40:32,152 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:32,555 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:32,889 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:33,377 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:33,841 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:34,343 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:34,795 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:40:51,283 agents.llm_agent WARNING: ART attempt 1/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:40:51,289 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:41:09,458 agents.llm_agent WARNING: ART attempt 1/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:41:09,462 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:41:13,464 agents.llm_agent WARNING: ART attempt 2/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:41:13,465 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:41:16,997 agents.llm_agent WARNING: ART attempt 3/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:41:16,999 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:41:20,545 agents.llm_agent WARNING: ART attempt 4/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:41:20,555 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:41:24,216 agents.llm_agent WARNING: ART attempt 5/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:41:24,219 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:42:29,775 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 20:43:32,520 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:32,734 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:33,065 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:33,300 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:33,641 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:33,863 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:43:34,788 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 20:44:06,147 agents.llm_agent WARNING: ART attempt 1/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:06,151 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:10,340 agents.llm_agent WARNING: ART attempt 2/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:10,342 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:14,002 agents.llm_agent WARNING: ART attempt 3/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:14,003 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:33,576 agents.llm_agent WARNING: ART attempt 1/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:33,578 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:37,108 agents.llm_agent WARNING: ART attempt 2/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:37,110 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:40,676 agents.llm_agent WARNING: ART attempt 3/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:40,677 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:44,347 agents.llm_agent WARNING: ART attempt 4/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:44,348 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 20:44:48,004 agents.llm_agent WARNING: ART attempt 5/5 for ceo: JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+2026-03-07 20:44:48,006 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 198, in _call_art_model
+    return self._parse_text_response(text)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 243, in _parse_text_response
+    data = json.loads(text[start:end])
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 1 column 70 (char 69)
+
+2026-03-07 22:20:29,831 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 22:21:23,971 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (1/5)...
+2026-03-07 22:21:25,139 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (2/5)...
+2026-03-07 22:21:27,615 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (3/5)...
+2026-03-07 22:21:28,922 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (4/5)...
+2026-03-07 22:21:30,040 agents.llm_agent WARNING: hr picked invalid 'WRITE_BLOG', retrying (5/5)...
+2026-03-07 22:30:06,606 integrations.sheets WARNING: Google Sheets setup failed: Expecting value: line 1 column 1 (char 0). Continuing without sync.
+2026-03-07 22:31:03,338 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:03,595 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:03,862 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:04,134 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:04,421 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:04,687 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:31:04,938 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:29,742 training.trainer WARNING: Remote training failed for ceo: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:29,994 training.trainer WARNING: Remote training failed for dev: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:30,264 training.trainer WARNING: Remote training failed for marketing: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:30,531 training.trainer WARNING: Remote training failed for sales: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:30,800 training.trainer WARNING: Remote training failed for content: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:31,073 training.trainer WARNING: Remote training failed for hr: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:31,336 training.trainer WARNING: Remote training failed for customer: Client error '404 Not Found' for url 'https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run/train'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+2026-03-07 22:32:51,476 agents.llm_agent WARNING: ART attempt 1/5 for sales: BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+2026-03-07 22:32:51,482 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+
+2026-03-07 22:32:53,608 agents.llm_agent WARNING: ART attempt 2/5 for sales: BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+2026-03-07 22:32:53,610 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+
+2026-03-07 22:32:55,717 agents.llm_agent WARNING: ART attempt 3/5 for sales: BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+2026-03-07 22:32:55,720 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+
+2026-03-07 22:32:57,834 agents.llm_agent WARNING: ART attempt 4/5 for sales: BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+2026-03-07 22:32:57,837 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+
+2026-03-07 22:32:59,947 agents.llm_agent WARNING: ART attempt 5/5 for sales: BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+2026-03-07 22:32:59,951 agents.llm_agent WARNING: Traceback (most recent call last):
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 152, in decide
+    action = call_fn(user_msg)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/agents/llm_agent.py", line 187, in _call_art_model
+    response = self.openai_client.chat.completions.create(
+        model=self._art_endpoint["model_name"],
+    ...<5 lines>...
+        ],
+    )
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/bharatbvs/Desktop/OpenEnvHack/SuperOffice_env/office_os/.venv/lib/python3.14/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "You passed 3585 input tokens and requested 512 output tokens. However, the model's context length is only 4096 tokens, resulting in a maximum input length of 3584 tokens. Please reduce the length of the input prompt. (parameter=input_tokens, value=3585)", 'type': 'BadRequestError', 'param': 'input_tokens', 'code': 400}}
+

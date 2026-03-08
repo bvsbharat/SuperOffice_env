@@ -242,7 +242,7 @@ export function ThreeDView() {
                   borderBottom: rightTab === 'agents' ? '2px solid #6366f1' : '2px solid transparent',
                 }}
               >
-                AGENTS (8)
+                AGENTS (7)
               </button>
             </div>
 

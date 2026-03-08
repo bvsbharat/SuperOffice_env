@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type {
   AgentId, GTMAgent, KPISnapshot, Message, SimEvent,
-  EpisodeResult, Phase, ScenarioKey, Speed, GTMState, StepResult,
+  Phase, Speed, GTMState, StepResult,
   ViewMode, PanelVisibility, Theme, StateSnapshot,
+  PipelineCustomer, FeatureStatus, ContentPiece, SharedMemoryEntry,
 } from '../types'
 import { AGENT_ORDER, ROOM_3D_POSITIONS } from '../types'
 
@@ -22,14 +23,15 @@ interface GTMStore {
   // RL State
   episode: number
   step: number
+  day: number
+  turn: number
   phase: Phase
   isRunning: boolean
   speed: Speed
-  scenario: ScenarioKey
   globalReward: number
-  cooperationScore: number
-  episodeHistory: EpisodeResult[]
+  rewardTotals: Record<AgentId, number>
   done: boolean
+  maxDays: number
 
   // Agents
   agents: Record<AgentId, GTMAgent>
@@ -43,6 +45,12 @@ interface GTMStore {
   // Conversation & Events
   conversations: Message[]
   events: SimEvent[]
+
+  // Real env data
+  pipeline: PipelineCustomer[]
+  features: FeatureStatus[]
+  content: ContentPiece[]
+  sharedMemory: SharedMemoryEntry[]
 
   // Agent movement positions (for 3D animated handoffs)
   agentPositions: Record<AgentId, [number, number, number]>
@@ -90,12 +98,15 @@ interface GTMStore {
 const DEFAULT_AGENT = (id: AgentId): GTMAgent => ({
   agent_id: id,
   name: id,
-  emoji: '🤖',
+  emoji: '',
   color: '#888',
   role: '',
   room: '',
   status: 'idle',
   current_task: '',
+  current_action: '',
+  target: '',
+  reasoning: '',
   reward: 0,
   reward_history: [],
   last_message: '',
@@ -105,20 +116,28 @@ const defaultAgents = (): Record<AgentId, GTMAgent> =>
   Object.fromEntries(AGENT_ORDER.map(id => [id, DEFAULT_AGENT(id)])) as Record<AgentId, GTMAgent>
 
 const defaultKPIs = (): KPISnapshot => ({
-  step: 0, mrr: 50000, cac: 800, mql: 10, nps: 25, win_rate: 0.18, burn_rate: 85000,
+  step: 0, day: 1, revenue: 0, total_revenue: 0,
+  website_traffic: 1000, conversion_rate: 0.02, brand_awareness: 10,
+  product_stability: 1.0, budget_remaining: 15000, pipeline_value: 0,
+  features_shipped: 0, content_published: 0, active_campaigns: 0,
+  nps_score: 50, customer_satisfaction: 0.5, team_velocity: 1.0,
 })
+
+const defaultRewardTotals = (): Record<AgentId, number> =>
+  Object.fromEntries(AGENT_ORDER.map(id => [id, 0])) as Record<AgentId, number>
 
 export const useStore = create<GTMStore>((set, get) => ({
   episode: 0,
   step: 0,
-  phase: 'standup',
+  day: 1,
+  turn: 0,
+  phase: 'morning_standup',
   isRunning: false,
   speed: 1,
-  scenario: 'baseline',
   globalReward: 0,
-  cooperationScore: 0.5,
-  episodeHistory: [],
+  rewardTotals: defaultRewardTotals(),
   done: false,
+  maxDays: 10,
 
   agents: defaultAgents(),
   selectedAgent: null,
@@ -129,6 +148,11 @@ export const useStore = create<GTMStore>((set, get) => ({
 
   conversations: [],
   events: [],
+
+  pipeline: [],
+  features: [],
+  content: [],
+  sharedMemory: [],
 
   agentPositions: Object.fromEntries(
     AGENT_ORDER.map(id => {
@@ -161,7 +185,7 @@ export const useStore = create<GTMStore>((set, get) => ({
 
     // Speech bubble for active agent
     const newBubbles = state.speechBubbles.filter(b => b.expiresAt > now)
-    const reasoningText = result.reasoning || `Working on: ${result.task || 'current task'}`
+    const reasoningText = result.reasoning || `${result.action} -> ${result.target || 'working'}`
     if (result.activeAgent) {
       newBubbles.push({
         agentId: result.activeAgent,
@@ -170,64 +194,43 @@ export const useStore = create<GTMStore>((set, get) => ({
       })
     }
 
-    // Coordination arrows for handoffs
+    // Coordination arrows (no handoffs in real env, but keep structure)
     const newArrows = state.coordArrows.filter(a => a.expiresAt > now)
-    if (result.handoffTo && result.activeAgent) {
-      newArrows.push({
-        from: result.activeAgent,
-        to: result.handoffTo,
-        expiresAt: now + 2500,
-      })
-    }
-
-    // Agent movement: move active agent toward handoff target's room
-    const newPositions = { ...state.agentPositions }
-    if (result.handoffTo && result.activeAgent) {
-      const targetRoom = ROOM_3D_POSITIONS[result.handoffTo]
-      newPositions[result.activeAgent] = [targetRoom[0] + 0.4, targetRoom[1], targetRoom[2] + 0.3]
-      // Schedule return to home room after 2.5s
-      const agent = result.activeAgent
-      setTimeout(() => {
-        const homeRoom = ROOM_3D_POSITIONS[agent]
-        useStore.setState((s) => ({
-          agentPositions: {
-            ...s.agentPositions,
-            [agent]: [homeRoom[0] + 0.4, homeRoom[1], homeRoom[2] + 0.3],
-          },
-        }))
-      }, 2500)
-    }
 
     // Push snapshot for 4D timeline
     const snapshot: StateSnapshot = {
       step: fullState.step,
+      day: fullState.day,
       phase: fullState.phase,
       activeAgent: result.activeAgent,
       agents: { ...fullState.agents },
       kpis: { ...fullState.kpis },
       globalReward: fullState.global_reward,
-      cooperationScore: fullState.cooperation_score,
       reasoning: result.reasoning || '',
-      task: result.task || '',
-      handoffTo: result.handoffTo,
+      action: result.action || '',
+      target: result.target || '',
     }
 
     return {
       episode: fullState.episode,
       step: fullState.step,
+      day: fullState.day,
+      turn: fullState.turn,
       phase: fullState.phase,
-      scenario: fullState.scenario,
       globalReward: fullState.global_reward,
-      cooperationScore: fullState.cooperation_score,
-      episodeHistory: fullState.episode_history,
+      rewardTotals: fullState.reward_totals || defaultRewardTotals(),
       done: fullState.done,
+      maxDays: fullState.max_days || 10,
       agents: fullState.agents,
       activeAgent: result.activeAgent,
       kpis: fullState.kpis,
       kpiHistory: fullState.kpi_history,
       conversations: fullState.conversations,
       events: fullState.events,
-      agentPositions: newPositions,
+      pipeline: fullState.pipeline || [],
+      features: fullState.features || [],
+      content: fullState.content || [],
+      sharedMemory: fullState.shared_memory || [],
       lastProcessedStep: stepKey,
       speechBubbles: newBubbles,
       coordArrows: newArrows,
@@ -238,18 +241,23 @@ export const useStore = create<GTMStore>((set, get) => ({
   applyFullState: (s) => set({
     episode: s.episode,
     step: s.step,
+    day: s.day || 1,
+    turn: s.turn || 0,
     phase: s.phase,
-    scenario: s.scenario,
     globalReward: s.global_reward,
-    cooperationScore: s.cooperation_score,
-    episodeHistory: s.episode_history,
+    rewardTotals: s.reward_totals || defaultRewardTotals(),
     done: s.done,
+    maxDays: s.max_days || 10,
     agents: s.agents,
     activeAgent: s.active_agent,
     kpis: s.kpis,
     kpiHistory: s.kpi_history,
     conversations: s.conversations,
     events: s.events,
+    pipeline: s.pipeline || [],
+    features: s.features || [],
+    content: s.content || [],
+    sharedMemory: s.shared_memory || [],
     speechBubbles: [],
     coordArrows: [],
     stateHistory: [],

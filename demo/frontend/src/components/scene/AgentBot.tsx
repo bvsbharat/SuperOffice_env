@@ -20,7 +20,7 @@ const SKIN_TONES: Record<AgentId, string> = {
   content:   '#C68642',
   dev:       '#F1C27D',
   sales:     '#E0AC69',
-  scene:     '#D4A574',
+
   customer:  '#FFE0BD',
 }
 
@@ -31,7 +31,7 @@ const HAIR_COLORS: Record<AgentId, string> = {
   content:   '#4a2c2a',
   dev:       '#1a1a1a',
   sales:     '#6B3A2A',
-  scene:     '#2c2c2c',
+
   customer:  '#D4A76A',
 }
 
@@ -42,7 +42,7 @@ const OUTFIT_CONFIG: Record<AgentId, { primary: string; secondary: string; accen
   content:   { primary: '#f97316', secondary: '#fff7ed' },
   dev:       { primary: '#22d3ee', secondary: '#1e293b' },
   sales:     { primary: '#fbbf24', secondary: '#ffffff' },
-  scene:     { primary: '#34d399', secondary: '#1e293b' },
+
   customer:  { primary: '#f472b6', secondary: '#fdf2f8' },
 }
 
@@ -53,7 +53,7 @@ const PANTS_CONFIG: Record<AgentId, { color: string; style: 'trousers' | 'skirt'
   content:   { color: '#78350f', style: 'trousers' },
   dev:       { color: '#1e293b', style: 'trousers' },
   sales:     { color: '#1e293b', style: 'trousers' },
-  scene:     { color: '#374151', style: 'trousers' },
+
   customer:  { color: '#f472b6', style: 'skirt' },
 }
 
@@ -64,7 +64,7 @@ const EYE_COLORS: Record<AgentId, string> = {
   content:   '#f97316',
   dev:       '#22d3ee',
   sales:     '#92400e',
-  scene:     '#34d399',
+
   customer:  '#f472b6',
 }
 
@@ -259,14 +259,6 @@ function AgentHair({ agentId, hairColor }: { agentId: AgentId; hairColor: THREE.
           </mesh>
         </group>
       )
-    case 'scene':
-      // Buzz cut — taller and slightly darker
-      return (
-        <mesh position={[0, 0.04, -0.01]} scale={[1.02, 0.65, 1.02]}>
-          <sphereGeometry args={[0.124, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
-          <meshStandardMaterial color={hairColor.clone().lerp(new THREE.Color('#1a1a1a'), 0.15)} roughness={0.85} />
-        </mesh>
-      )
     case 'customer':
       // Long flowing hair
       return (
@@ -425,21 +417,6 @@ function OfficeOutfit({ agentId, outfit }: { agentId: AgentId; outfit: { primary
           </mesh>
         </group>
       )
-    case 'scene':
-      // Tech polo + collar
-      return (
-        <group>
-          <mesh position={[0, 0.38, 0]}>
-            <capsuleGeometry args={[0.1, 0.16, 6, 8]} />
-            <meshStandardMaterial color={outfit.primary} roughness={0.65} />
-          </mesh>
-          {/* Polo collar */}
-          <mesh position={[0, 0.475, 0.03]} rotation={[-0.2, 0, 0]}>
-            <boxGeometry args={[0.09, 0.025, 0.06]} />
-            <meshStandardMaterial color={outfit.primary} roughness={0.6} />
-          </mesh>
-        </group>
-      )
     case 'customer':
       // Reception dress
       return (
@@ -561,25 +538,6 @@ function AgentAccessoryMesh({ accessory, agentId, accentObj }: { accessory: Agen
           <mesh rotation={[0, 0, Math.PI / 2]}>
             <torusGeometry args={[0.016, 0.002, 6, 8]} />
             <meshStandardMaterial color="#b8860b" metalness={0.8} roughness={0.15} />
-          </mesh>
-        </group>
-      )
-    case 'lanyard':
-      return (
-        <group>
-          {/* Lanyard strap */}
-          <mesh position={[0, 0.45, 0.08]}>
-            <boxGeometry args={[0.015, 0.12, 0.003]} />
-            <meshStandardMaterial color="#34d399" roughness={0.6} />
-          </mesh>
-          {/* ID badge */}
-          <mesh position={[0, 0.38, 0.085]}>
-            <boxGeometry args={[0.035, 0.045, 0.004]} />
-            <meshStandardMaterial color="#ffffff" roughness={0.4} />
-          </mesh>
-          <mesh position={[0, 0.39, 0.088]}>
-            <boxGeometry args={[0.02, 0.015, 0.002]} />
-            <meshStandardMaterial color="#94a3b8" roughness={0.5} />
           </mesh>
         </group>
       )

@@ -116,12 +116,11 @@ export function FourDView() {
     return AGENT_ORDER.map(id =>
       gtmAgentToFourdAgent(
         state.agents[id],
-        state.handoffTo,
         state.reasoning,
         state.activeAgent === id,
       )
     )
-  }, [state.agents, state.handoffTo, state.reasoning, state.activeAgent])
+  }, [state.agents, state.reasoning, state.activeAgent])
 
   const phaseColor = PHASE_COLORS[state.phase] || '#6b7280'
 
@@ -252,10 +251,10 @@ export function FourDView() {
             </span>
           )}
 
-          {/* Task */}
-          {state.task && (
+          {/* Action */}
+          {state.action && (
             <span className="text-[10px] truncate" style={{ color: '#94a3b8' }}>
-              {state.task}
+              {state.action}{state.target ? ` -> ${state.target}` : ''}
             </span>
           )}
 
@@ -272,7 +271,7 @@ export function FourDView() {
               R: {state.globalReward.toFixed(2)}
             </span>
             <span className="text-[9px] font-mono" style={{ color: '#94a3b8' }}>
-              COOP: {(state.cooperationScore * 100).toFixed(0)}%
+              Day {state.day}
             </span>
           </div>
         </div>

@@ -7,11 +7,11 @@ export interface EffectiveState {
   activeAgent: AgentId | null
   phase: Phase
   step: number
+  day: number
   globalReward: number
-  cooperationScore: number
   reasoning: string
-  task: string
-  handoffTo: AgentId | null
+  action: string
+  target: string
   isHistorical: boolean
 }
 
@@ -25,8 +25,8 @@ export function useEffectiveState(): EffectiveState {
   const activeAgent = useStore(s => s.activeAgent)
   const phase = useStore(s => s.phase)
   const step = useStore(s => s.step)
+  const day = useStore(s => s.day)
   const globalReward = useStore(s => s.globalReward)
-  const cooperationScore = useStore(s => s.cooperationScore)
 
   if (timelineStep !== null && stateHistory[timelineStep]) {
     const snap = stateHistory[timelineStep]
@@ -36,11 +36,11 @@ export function useEffectiveState(): EffectiveState {
       activeAgent: snap.activeAgent,
       phase: snap.phase,
       step: snap.step,
+      day: snap.day,
       globalReward: snap.globalReward,
-      cooperationScore: snap.cooperationScore,
       reasoning: snap.reasoning,
-      task: snap.task,
-      handoffTo: snap.handoffTo,
+      action: snap.action,
+      target: snap.target,
       isHistorical: true,
     }
   }
@@ -51,11 +51,11 @@ export function useEffectiveState(): EffectiveState {
     activeAgent,
     phase,
     step,
+    day,
     globalReward,
-    cooperationScore,
     reasoning: '',
-    task: '',
-    handoffTo: null,
+    action: '',
+    target: '',
     isHistorical: false,
   }
 }

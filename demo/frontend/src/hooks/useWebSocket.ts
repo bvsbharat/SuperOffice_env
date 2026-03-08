@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../store/useStore'
 import type { StepResult, GTMState } from '../types'
 
-const WS_URL = 'ws://localhost:8000/ws/live'
+const WS_URL = 'ws://localhost:8080/ws/live'
 const RECONNECT_DELAY = 2000
 const MAX_RECONNECT = 10
 
@@ -27,7 +27,7 @@ export function useWebSocket() {
         const msg = JSON.parse(ev.data)
         if (msg.type === 'step') {
           applyStepResult(msg as StepResult)
-        } else if (msg.type === 'connected' || msg.type === 'reset' || msg.type === 'scenario_change') {
+        } else if (msg.type === 'connected' || msg.type === 'reset') {
           if (msg.state) applyFullState(msg.state as GTMState)
         }
       } catch {

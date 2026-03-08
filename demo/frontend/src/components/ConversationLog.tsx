@@ -5,24 +5,24 @@ import type { MsgType, AgentId } from '../types'
 import { AGENT_ORDER } from '../types'
 
 const MSG_BG: Record<MsgType, string> = {
-  handoff:   'border-l-2 border-l-amber-400 bg-amber-50 dark:bg-amber-950/30',
   reasoning: 'border-l-2 border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-800/50',
   event:     'border-l-2 border-l-orange-400 bg-orange-50 dark:bg-orange-950/30',
-  chat:      'border-l-2 border-l-slate-200 dark:border-l-slate-600 bg-transparent',
+  chat:      'border-l-2 border-l-blue-300 dark:border-l-blue-600 bg-blue-50 dark:bg-blue-950/20',
+  action:    'border-l-2 border-l-emerald-400 bg-emerald-50 dark:bg-emerald-950/20',
 }
 
 const MSG_LABEL: Record<MsgType, string> = {
-  handoff:   'HANDOFF',
   reasoning: 'THINK',
   event:     'EVENT',
   chat:      'MSG',
+  action:    'ACTION',
 }
 
 const MSG_LABEL_COLOR: Record<MsgType, string> = {
-  handoff:   '#d97706',
   reasoning: '#64748b',
   event:     '#ea580c',
-  chat:      '#94a3b8',
+  chat:      '#3b82f6',
+  action:    '#16a34a',
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -32,14 +32,15 @@ const AGENT_COLORS: Record<string, string> = {
   content:   '#7c3aed',
   dev:       '#059669',
   sales:     '#c2410c',
-  scene:     '#059669',
   customer:  '#a16207',
   system:    '#dc2626',
   self:      '#64748b',
+  all:       '#6366f1',
 }
 
 export function ConversationLog() {
   const conversations = useStore(s => s.conversations)
+  const sharedMemory = useStore(s => s.sharedMemory)
   const [filter, setFilter] = useState<AgentId | 'all'>('all')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -96,7 +97,7 @@ export function ConversationLog() {
                   className="text-[8px] font-bold px-1 rounded"
                   style={{ color: MSG_LABEL_COLOR[msg.msg_type], background: `${MSG_LABEL_COLOR[msg.msg_type]}15` }}
                 >
-                  {MSG_LABEL[msg.msg_type]}
+                  {MSG_LABEL[msg.msg_type] ?? 'MSG'}
                 </span>
                 <span style={{ color: AGENT_COLORS[msg.from_agent] ?? '#64748b' }} className="font-semibold">
                   {msg.from_agent}
@@ -109,12 +110,33 @@ export function ConversationLog() {
                     </span>
                   </>
                 )}
-                <span className="ml-auto" style={{ color: 'var(--color-card-border)' }}>s{msg.step}</span>
+                <span className="ml-auto" style={{ color: 'var(--color-card-border)' }}>t{msg.step}</span>
               </div>
               <div className="leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>{msg.text}</div>
             </motion.div>
           ))}
         </AnimatePresence>
+
+        {/* Shared memory entries at bottom */}
+        {sharedMemory.length > 0 && filter === 'all' && (
+          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <div className="text-[8px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-faint)' }}>
+              Shared Memory
+            </div>
+            {sharedMemory.slice(-5).map((entry, i) => (
+              <div key={i} className="text-[10px] rounded px-2 py-1 mb-0.5 border-l-2 border-l-purple-400 bg-purple-50 dark:bg-purple-950/20">
+                <span style={{ color: AGENT_COLORS[entry.author] ?? '#64748b' }} className="font-semibold">
+                  {entry.author}
+                </span>
+                <span className="text-[8px] ml-1 px-1 rounded" style={{ background: '#a855f715', color: '#a855f7' }}>
+                  {entry.type}
+                </span>
+                <div className="leading-relaxed mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{entry.content}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
     </div>

@@ -20,7 +20,8 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       parent: containerRef.current,
-      pixelArt: true,
+      pixelArt: false,
+      antialias: true,
       transparent: true,
       scale: {
         mode: Phaser.Scale.RESIZE,

@@ -977,7 +977,6 @@ export function OfficeRoom({
         {agentId === 'content' && <ContentFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
         {agentId === 'dev' && <DevFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
         {agentId === 'sales' && <SalesFurniture halfW={fHalfW} halfD={fHalfD} edgeColor={edgeColor} />}
-        {agentId === 'scene' && <SceneRoomFurniture halfW={fHalfW} halfD={fHalfD} />}
         {agentId === 'customer' && <LobbyFurniture halfW={fHalfW} halfD={fHalfD} />}
       </group>
 

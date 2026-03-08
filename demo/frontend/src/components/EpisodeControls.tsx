@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore'
-import type { Speed, ScenarioKey } from '../types'
-import { SCENARIO_LABELS } from '../types'
+import type { Speed } from '../types'
 
-const SPEED_INTERVALS: Record<Speed, number> = { 1: 1800, 2: 900, 5: 360 }
+const SPEED_INTERVALS: Record<Speed, number> = { 1: 3000, 2: 1500, 5: 600 }
 
 export function EpisodeControls() {
   const isRunning = useStore(s => s.isRunning)
   const speed = useStore(s => s.speed)
-  const scenario = useStore(s => s.scenario)
   const done = useStore(s => s.done)
   const isLoading = useStore(s => s.isLoading)
-  const step = useStore(s => s.step)
+  const day = useStore(s => s.day)
+  const turn = useStore(s => s.turn)
+  const maxDays = useStore(s => s.maxDays)
   const wsConnected = useStore(s => s.wsConnected)
   const { setIsRunning, setSpeed, setIsLoading, setError, applyStepResult, applyFullState } = useStore()
 
@@ -38,11 +38,7 @@ export function EpisodeControls() {
     setIsRunning(false)
     setIsLoading(true)
     try {
-      const res = await fetch('/api/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenario }),
-      })
+      const res = await fetch('/api/reset', { method: 'POST' })
       if (!res.ok) throw new Error(`reset failed: ${res.status}`)
       const data = await res.json()
       applyFullState(data)
@@ -51,17 +47,7 @@ export function EpisodeControls() {
     } finally {
       setIsLoading(false)
     }
-  }, [scenario, setIsRunning, setIsLoading, setError, applyFullState])
-
-  const apiSetScenario = useCallback(async (s: ScenarioKey) => {
-    setIsRunning(false)
-    try {
-      const res = await fetch(`/api/scenario/${s}`, { method: 'POST' })
-      if (!res.ok) return
-      const data = await res.json()
-      applyFullState(data)
-    } catch {}
-  }, [setIsRunning, applyFullState])
+  }, [setIsRunning, setIsLoading, setError, applyFullState])
 
   // Auto-play loop
   useEffect(() => {
@@ -73,7 +59,7 @@ export function EpisodeControls() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [isRunning, done, speed, apiStep])
 
-  const canStep = !done && !isLoading && step < 24
+  const canStep = !done && !isLoading
 
   return (
     <div className="flex items-center gap-3 px-3 h-full">
@@ -84,7 +70,7 @@ export function EpisodeControls() {
         className={`text-lg leading-none transition-opacity ${!canStep ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110'}`}
         title={isRunning ? 'Pause' : 'Play'}
       >
-        {isRunning ? '⏸' : '▶️'}
+        {isRunning ? '\u23F8' : '\u25B6\uFE0F'}
       </button>
 
       {/* Step */}
@@ -94,7 +80,7 @@ export function EpisodeControls() {
         className={`text-lg leading-none transition-opacity ${(!canStep || isRunning) ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110'}`}
         title="Step"
       >
-        ⏭
+        {'\u23ED'}
       </button>
 
       {/* Reset */}
@@ -104,7 +90,7 @@ export function EpisodeControls() {
         className={`text-lg leading-none transition-opacity ${isLoading ? 'opacity-30' : 'hover:scale-110'}`}
         title="Reset"
       >
-        🔄
+        {'\uD83D\uDD04'}
       </button>
 
       <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
@@ -129,19 +115,10 @@ export function EpisodeControls() {
 
       <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
 
-      {/* Scenario */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] shrink-0" style={{ color: 'var(--color-text-faint)' }}>SCENARIO</span>
-        <select
-          value={scenario}
-          onChange={e => apiSetScenario(e.target.value as ScenarioKey)}
-          className="text-[10px] rounded px-1.5 py-0.5 focus:outline-none"
-          style={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-        >
-          {(Object.entries(SCENARIO_LABELS) as [ScenarioKey, string][]).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
-        </select>
+      {/* Day / Turn info */}
+      <div className="flex items-center gap-2 text-[10px] font-mono" style={{ color: 'var(--color-text-faint)' }}>
+        <span>Day <span style={{ color: 'var(--color-text-secondary)' }}>{day}/{maxDays}</span></span>
+        <span>Turn <span style={{ color: 'var(--color-text-secondary)' }}>{turn}</span></span>
       </div>
 
       {/* WS status */}

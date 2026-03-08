@@ -25,7 +25,8 @@ const BUBBLE_PADDING = 12
 const BUBBLE_FONT_SIZE = '13px'
 const BUBBLE_MAX_CHARS = 120
 const BUBBLE_TAIL_SIZE = 6
-const TEXT_RESOLUTION = 3
+const TEXT_RESOLUTION = 4
+const TEXT_FONT = '"SF Pro Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
 
 interface AgentSprite {
   sprite: Phaser.GameObjects.Sprite
@@ -59,7 +60,7 @@ export interface PhaserBridge {
 export class OfficeScene extends Phaser.Scene {
   private agentSprites: Map<AgentId, AgentSprite> = new Map()
   private speechBubbleObjects: Map<string, SpeechBubbleObjects> = new Map()
-  private currentPhase: Phase = 'standup'
+  private currentPhase: Phase = 'morning_standup'
   private isDragging = false
   private dragStartX = 0
   private dragStartY = 0
@@ -96,6 +97,17 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   create() {
+    // Apply NEAREST filter to pixel-art textures so they stay crisp
+    const pixelArtKeys = [
+      'field_b', 'field_c', 'room_builder', 'village_b', 'forest_b',
+      'interiors_1', 'interiors_2', 'interiors_3', 'interiors_4', 'blocks',
+      ...AGENT_ORDER,
+    ]
+    for (const key of pixelArtKeys) {
+      const tex = this.textures.get(key)
+      if (tex) tex.setFilter(Phaser.Textures.FilterMode.NEAREST)
+    }
+
     // Create tilemap
     const map = this.make.tilemap({ key: 'office_map' })
 
@@ -287,7 +299,7 @@ export class OfficeScene extends Phaser.Scene {
     // Name text below sprite — high resolution so it's crisp despite pixelArt mode
     const nameText = this.add.text(x, y + 28, aid.toUpperCase(), {
       fontSize: '18px',
-      fontFamily: 'monospace',
+      fontFamily: TEXT_FONT,
       color: '#ffffff',
       backgroundColor: '#000000cc',
       padding: { x: 6, y: 3 },
@@ -397,7 +409,7 @@ export class OfficeScene extends Phaser.Scene {
     // Create text first to measure its size — high resolution for crisp rendering
     const label = this.add.text(0, 0, displayText, {
       fontSize: BUBBLE_FONT_SIZE,
-      fontFamily: 'monospace',
+      fontFamily: TEXT_FONT,
       color: '#000000',
       wordWrap: { width: BUBBLE_MAX_WIDTH - 2 * BUBBLE_PADDING },
       align: 'center',
@@ -471,7 +483,7 @@ export class OfficeScene extends Phaser.Scene {
       if (!agentData) continue
 
       let targetPos: { tx: number; ty: number }
-      if (phase === 'standup') {
+      if (phase === 'morning_standup') {
         targetPos = STANDUP_POSITIONS[aid]
       } else {
         targetPos = ROOM_TILE_CENTERS[aid]

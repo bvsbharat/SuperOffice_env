@@ -202,9 +202,9 @@ export function TimelineScrubber() {
               color: '#e2e8f0',
             }}
           >
-            <div className="font-semibold">Step {stateHistory[hoveredStep].step}</div>
+            <div className="font-semibold">Day {(stateHistory[hoveredStep] as any).day || '?'} / Step {stateHistory[hoveredStep].step}</div>
             <div style={{ color: '#94a3b8' }}>
-              {stateHistory[hoveredStep].activeAgent || 'none'} - {stateHistory[hoveredStep].task || 'idle'}
+              {stateHistory[hoveredStep].activeAgent || 'none'} - {(stateHistory[hoveredStep] as any).action || 'idle'}
             </div>
             <div style={{ color: stateHistory[hoveredStep].globalReward >= 0 ? '#22c55e' : '#ef4444' }}>
               R: {stateHistory[hoveredStep].globalReward.toFixed(2)}

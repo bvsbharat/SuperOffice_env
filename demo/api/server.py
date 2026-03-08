@@ -1,35 +1,51 @@
 """
-SuperOffice GTM Demo — FastAPI server
+SuperOffice GTM Demo -- FastAPI server with real office_os RL environment.
 
 Usage:
+    # Bedrock (default):
+    python server.py --provider bedrock --model global.anthropic.claude-haiku-4-5-20251001-v1:0 --days 10
+
+    # ART/Northflank vLLM:
+    python server.py --provider art --art-endpoint https://your-endpoint.com --days 10
+
+    # Or via uvicorn (uses env vars for config):
     uvicorn server:app --reload --port 8000
 """
 
+import argparse
+import os
+import sys
+
 from dotenv import load_dotenv
-load_dotenv()  # Load .env before anything else reads env vars
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
+
+# Store config in module-level dict so routes.py can access it
+bridge_config: dict = {
+    "provider": os.environ.get("PROVIDER", "bedrock"),
+    "model": os.environ.get("MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    "days": int(os.environ.get("DAYS", "10")),
+    "art_endpoint": os.environ.get("ART_ENDPOINT", ""),
+    "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-3B-Instruct"),
+    "art_api_key": os.environ.get("ART_API_KEY", ""),
+    "aws_region": os.environ.get("AWS_REGION", "us-east-1"),
+}
 
 from routes import router
 
 app = FastAPI(
     title="SuperOffice GTM RL Demo",
-    description="8-agent Go-To-Market RL simulation API",
-    version="0.1.0",
+    description="7-agent Go-To-Market RL simulation with real office_os environment",
+    version="0.2.0",
 )
 
-# CORS — allow Vite dev server
+# CORS -- allow Vite dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,4 +61,52 @@ if os.path.isdir(dist_path):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "superoffice-gtm-demo"}
+    return {
+        "status": "ok",
+        "service": "superoffice-gtm-demo",
+        "provider": bridge_config["provider"],
+        "days": bridge_config["days"],
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SuperOffice GTM Demo Server")
+    parser.add_argument("--provider", choices=["bedrock", "art"], default="bedrock",
+                        help="LLM provider (default: bedrock)")
+    parser.add_argument("--model", type=str, default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                        help="Model name (default: global.anthropic.claude-haiku-4-5-20251001-v1:0)")
+    parser.add_argument("--days", type=int, default=10,
+                        help="Days to simulate per episode (default: 10)")
+    parser.add_argument("--art-endpoint", type=str, default="",
+                        help="ART/vLLM endpoint URL")
+    parser.add_argument("--art-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
+                        help="Model name on the vLLM endpoint")
+    parser.add_argument("--art-api-key", type=str, default="",
+                        help="API key for ART endpoint")
+    parser.add_argument("--aws-region", type=str, default="us-east-1",
+                        help="AWS region for Bedrock")
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    args = parser.parse_args()
+
+    # Update config
+    bridge_config.update({
+        "provider": args.provider,
+        "model": args.model,
+        "days": args.days,
+        "art_endpoint": args.art_endpoint or os.environ.get("ART_ENDPOINT", ""),
+        "art_model": args.art_model,
+        "art_api_key": args.art_api_key or os.environ.get("ART_API_KEY", ""),
+        "aws_region": args.aws_region,
+    })
+
+    import uvicorn
+    print(f"Starting server: provider={args.provider}, model={args.model}, days={args.days}")
+    if args.provider == "art":
+        print(f"  ART endpoint: {bridge_config['art_endpoint']}")
+        print(f"  ART model: {bridge_config['art_model']}")
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()

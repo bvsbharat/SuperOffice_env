@@ -7,7 +7,6 @@ export enum AgentType {
   CONTENT = 'Content Builder',
   DEV = 'Dev',
   SALES = 'Sales',
-  SCENE = 'Scene',
   CUSTOMER = 'Customer',
 }
 
@@ -45,25 +44,6 @@ export interface LogEntry {
   timestamp: number
 }
 
-export enum ScenarioType {
-  BASELINE = 'Baseline GTM',
-  SERIES_A = 'Series A Pressure',
-  COMPETITOR = 'Competitor Launch',
-  CHURN = 'Churn Spike',
-  VIRAL = 'Viral Moment',
-}
-
-export interface Scenario {
-  type: ScenarioType
-  description: string
-  modifiers: {
-    burnRate: number
-    customerAcquisition: number
-    churnRate: number
-    devVelocity: number
-  }
-}
-
 const AGENT_TYPE_MAP: Record<AgentId, AgentType> = {
   ceo: AgentType.CEO,
   hr: AgentType.PLANNING,
@@ -71,18 +51,14 @@ const AGENT_TYPE_MAP: Record<AgentId, AgentType> = {
   content: AgentType.CONTENT,
   dev: AgentType.DEV,
   sales: AgentType.SALES,
-  scene: AgentType.SCENE,
   customer: AgentType.CUSTOMER,
 }
 
 export function gtmAgentToFourdAgent(
   g: GTMAgent,
-  handoffTo?: AgentId | null,
   reasoning?: string,
   isActiveAgent?: boolean,
 ): Agent {
-  // For the active agent, show reasoning or task as speech
-  // For other agents, show their last_message if any
   const message = isActiveAgent
     ? (reasoning || g.current_task || g.last_message || undefined)
     : (g.last_message || g.current_task || undefined)
@@ -98,7 +74,6 @@ export function gtmAgentToFourdAgent(
     taskProgress: g.status === 'active' ? 50 : g.status === 'done' ? 100 : 0,
     reward: g.reward,
     coopScore: 100,
-    talkingTo: handoffTo === g.agent_id ? undefined : (handoffTo || undefined),
     lastMessage: message,
   }
 }

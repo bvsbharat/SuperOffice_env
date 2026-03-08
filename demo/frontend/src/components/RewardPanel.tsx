@@ -1,23 +1,25 @@
-import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from 'recharts'
 import { useStore } from '../store/useStore'
+import { AGENT_ORDER } from '../types'
 
 export function RewardPanel() {
   const globalReward = useStore(s => s.globalReward)
-  const cooperationScore = useStore(s => s.cooperationScore)
-  const episodeHistory = useStore(s => s.episodeHistory)
+  const rewardTotals = useStore(s => s.rewardTotals)
   const kpiHistory = useStore(s => s.kpiHistory)
   const done = useStore(s => s.done)
+  const agents = useStore(s => s.agents)
 
-  const bestReward = episodeHistory.length > 0
-    ? Math.max(...episodeHistory.map(e => e.global_reward))
-    : null
+  // Per-agent reward bars
+  const agentRewardData = AGENT_ORDER.map(id => ({
+    name: agents[id]?.emoji ? `${agents[id].emoji}` : id.slice(0, 3).toUpperCase(),
+    reward: rewardTotals[id] || 0,
+    fill: (rewardTotals[id] || 0) >= 0 ? '#22c55e' : '#ef4444',
+  }))
 
-  const rewardHistory = kpiHistory.slice(-24).map((_, i) => ({
+  const rewardHistory = kpiHistory.slice(-30).map((_, i) => ({
     i,
     r: globalReward * ((i + 1) / Math.max(kpiHistory.length, 1)),
   }))
-
-  const coopPct = Math.round(cooperationScore * 100)
 
   return (
     <div className="flex flex-col gap-3 h-full px-2 py-2">
@@ -25,13 +27,8 @@ export function RewardPanel() {
       <div className="rounded-lg p-3 shadow-sm" style={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)' }}>
         <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-faint)' }}>Global Reward</div>
         <div className={`text-2xl font-bold font-mono ${globalReward >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-          {globalReward >= 0 ? '+' : ''}{globalReward.toFixed(4)}
+          {globalReward >= 0 ? '+' : ''}{globalReward.toFixed(3)}
         </div>
-        {bestReward !== null && (
-          <div className="text-[9px] mt-0.5" style={{ color: 'var(--color-text-faint)' }}>
-            Best: <span className="text-amber-600">{bestReward >= 0 ? '+' : ''}{bestReward.toFixed(3)}</span>
-          </div>
-        )}
         {rewardHistory.length > 2 && (
           <div className="mt-2 h-10">
             <ResponsiveContainer width="100%" height="100%">
@@ -47,44 +44,40 @@ export function RewardPanel() {
         )}
       </div>
 
-      {/* Cooperation score */}
+      {/* Per-agent reward totals */}
       <div className="rounded-lg p-3 shadow-sm" style={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)' }}>
-        <div className="text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-faint)' }}>Cooperation Score</div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="text-xl font-bold font-mono text-blue-600">{coopPct}%</div>
-        </div>
-        {/* Progress bar */}
-        <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'var(--color-card-bg)' }}>
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${coopPct}%`,
-              background: coopPct > 70 ? '#16a34a' : coopPct > 40 ? '#2563eb' : '#dc2626',
-            }}
-          />
-        </div>
-        <div className="text-[9px] mt-1" style={{ color: 'var(--color-text-faint)' }}>
-          {coopPct > 70 ? 'Excellent sync' : coopPct > 40 ? 'Good collaboration' : 'Low coordination'}
+        <div className="text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-faint)' }}>Agent Rewards</div>
+        {agentRewardData.length > 0 && (
+          <ResponsiveContainer width="100%" height={100}>
+            <BarChart data={agentRewardData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="2,4" stroke="var(--color-card-bg)" />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={30} />
+              <Tooltip
+                contentStyle={{ background: 'var(--color-tooltip-bg)', border: '1px solid var(--color-tooltip-border)', fontSize: 10, color: 'var(--color-text-primary)' }}
+                formatter={(v: number) => [v.toFixed(2), 'Reward']}
+              />
+              <Bar dataKey="reward" radius={[2, 2, 0, 0]}>
+                {agentRewardData.map((entry, idx) => (
+                  <rect key={idx} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        <div className="mt-1 space-y-0.5">
+          {AGENT_ORDER.map(id => (
+            <div key={id} className="flex items-center justify-between text-[10px]">
+              <span className="font-mono" style={{ color: agents[id]?.color || 'var(--color-text-faint)' }}>
+                {agents[id]?.name || id}
+              </span>
+              <span className={`font-mono font-semibold ${(rewardTotals[id] || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {(rewardTotals[id] || 0) >= 0 ? '+' : ''}{(rewardTotals[id] || 0).toFixed(2)}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-
-      {/* Episode history */}
-      {episodeHistory.length > 0 && (
-        <div className="rounded-lg p-3 shadow-sm" style={{ background: 'var(--color-panel)', border: '1px solid var(--color-border)' }}>
-          <div className="text-[9px] uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-faint)' }}>Episode History</div>
-          <div className="space-y-1">
-            {episodeHistory.slice(-5).reverse().map(ep => (
-              <div key={ep.episode} className="flex items-center justify-between text-[10px]">
-                <span className="font-mono" style={{ color: 'var(--color-text-faint)' }}>EP{ep.episode}</span>
-                <span className={`font-mono font-semibold ${ep.global_reward >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {ep.global_reward >= 0 ? '+' : ''}{ep.global_reward.toFixed(3)}
-                </span>
-                <span style={{ color: 'var(--color-text-faint)' }}>{Math.round(ep.cooperation_score * 100)}% coop</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {done && (
         <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 text-center">

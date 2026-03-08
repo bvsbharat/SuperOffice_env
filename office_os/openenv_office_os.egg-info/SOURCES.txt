@@ -36,4 +36,5 @@ tests/test_env.py
 training/__init__.py
 training/collector.py
 training/northflank_server.py
+training/train_worker.py
 training/trainer.py

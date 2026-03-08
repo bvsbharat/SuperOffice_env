@@ -21,10 +21,6 @@ export function AgentCard({ agent, compact = false }: Props) {
   const isSelected = selectedAgent === agent.agent_id as AgentId
   const isActive = agent.status === 'active'
 
-  const rewardDelta = agent.reward_history.length >= 2
-    ? agent.reward_history[agent.reward_history.length - 1] - agent.reward_history[agent.reward_history.length - 2]
-    : agent.reward_history[agent.reward_history.length - 1] ?? 0
-
   const sparkData = agent.reward_history.slice(-12).map((v, i) => ({ i, v }))
 
   return (
@@ -66,20 +62,29 @@ export function AgentCard({ agent, compact = false }: Props) {
         </div>
       </div>
 
-      {/* Current task */}
-      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mb-1.5 min-h-[14px]">
+      {/* Current action + target */}
+      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mb-1 min-h-[14px]">
         <AnimatePresence mode="wait">
           <motion.span
-            key={agent.current_task}
+            key={agent.current_action || agent.current_task}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
-            {agent.current_task || 'Waiting...'}
+            {agent.current_action
+              ? `${agent.current_action}${agent.target ? ` -> ${agent.target}` : ''}`
+              : agent.current_task || 'Waiting...'}
           </motion.span>
         </AnimatePresence>
       </div>
+
+      {/* Reasoning (if active) */}
+      {isActive && agent.reasoning && !compact && (
+        <div className="text-[9px] italic text-slate-400 dark:text-slate-500 truncate mb-1">
+          {agent.reasoning}
+        </div>
+      )}
 
       {!compact && (
         <>
@@ -104,9 +109,6 @@ export function AgentCard({ agent, compact = false }: Props) {
             <div className="text-right shrink-0">
               <div className="text-xs font-mono text-slate-600 dark:text-slate-300">
                 {agent.reward.toFixed(2)}
-              </div>
-              <div className={`text-[10px] font-mono font-semibold ${rewardDelta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                {rewardDelta >= 0 ? '+' : ''}{rewardDelta.toFixed(2)}
               </div>
             </div>
           </div>
