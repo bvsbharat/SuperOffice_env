@@ -5,9 +5,10 @@ Uses OpenPipe ART LocalBackend which manages its own internal vLLM.
 One process handles everything: inference AND training.
 
 After training, LoRA adapters are automatically loaded — no restart needed.
+Each of the 7 agent roles gets its own LoRA adapter.
 
 Usage:
-    python training/train_worker.py --port 8081 --base-model Qwen/Qwen3-8B
+    python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-3B-Instruct
 """
 
 from __future__ import annotations
@@ -29,11 +30,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(__name__)
 
 _backend = None
-_models: dict[str, Any] = {}
-_base_model = "Qwen/Qwen3-8B"
+_models: dict[str, Any] = {}  # role -> art.TrainableModel (7 separate LoRAs)
+_base_model = "Qwen/Qwen2.5-3B-Instruct"
 _train_steps: dict[str, int] = {}
 _inference_url: str = ""
 _lock = threading.Lock()
+
+ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
 
 
 def _init_backend():
@@ -72,21 +75,22 @@ async def _register_model(role: str, base_model: str | None = None):
         _inference_url = model.inference_base_url
         logger.info(f"ART vLLM inference URL: {_inference_url}")
 
-    logger.info(f"Registered model for {role}: {model.name}")
+    logger.info(f"Registered LoRA for {role}: {model.name} ({len(_models)}/7)")
     return model
 
 
 async def _init_all_models():
-    """Register models for all roles on startup so vLLM is ready."""
+    """Register all 7 role models on startup — each gets its own LoRA adapter."""
     if not _init_backend():
         return
 
-    roles = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
-    for role in roles:
+    for role in ALL_ROLES:
         try:
             await _register_model(role, _base_model)
         except Exception as e:
             logger.error(f"Failed to register model for {role}: {e}")
+
+    logger.info(f"Registered {len(_models)}/7 role models. Each has its own LoRA adapter.")
 
 
 async def _train_role(role: str, base_model: str, learning_rate: float, trajectories_data: list) -> dict:
@@ -96,7 +100,15 @@ async def _train_role(role: str, base_model: str, learning_rate: float, trajecto
             return {"status": "error", "role": role, "error": "Backend not available"}
 
     import art
-    model = await _register_model(role, base_model)
+
+    # Register on-demand if not registered at startup
+    if role not in _models:
+        try:
+            await _register_model(role, base_model)
+        except Exception as e:
+            return {"status": "error", "role": role, "error": f"Failed to register: {e}"}
+
+    model = _models[role]
 
     trajectories = []
     for t in trajectories_data:
@@ -155,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "backend_ready": _backend is not None,
                 "inference_url": _inference_url,
-                "models": list(_models.keys()),
+                "models_registered": list(_models.keys()),
                 "train_steps": _train_steps,
                 "base_model": _base_model,
             })
@@ -166,7 +178,6 @@ class Handler(BaseHTTPRequestHandler):
                 "inference_url": _inference_url,
             })
         elif self.path.startswith("/v1/"):
-            # Proxy to ART's internal vLLM
             self._proxy_to_vllm("GET")
         else:
             self._json(404, {"error": "Not found"})
@@ -201,7 +212,6 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, result)
 
         elif self.path.startswith("/v1/"):
-            # Proxy to ART's internal vLLM
             self._proxy_to_vllm("POST", body)
         else:
             self._json(404, {"error": "Not found"})
@@ -244,7 +254,7 @@ def main():
     p = argparse.ArgumentParser(description="ART Training + Inference Worker")
     p.add_argument("--port", type=int, default=8081)
     p.add_argument("--host", type=str, default="0.0.0.0")
-    p.add_argument("--base-model", type=str, default="Qwen/Qwen3-8B")
+    p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-3B-Instruct")
     args = p.parse_args()
 
     global _base_model
@@ -252,15 +262,15 @@ def main():
 
     logger.info(f"ART Worker on {args.host}:{args.port}")
     logger.info(f"Base model: {_base_model}")
-    logger.info(f"ART manages vLLM internally (training + inference)")
+    logger.info(f"7 separate LoRA adapters (one per role)")
     logger.info(f"Endpoints:")
     logger.info(f"  GET  /health              - Status + inference URL")
     logger.info(f"  POST /train               - Train a role with GRPO")
     logger.info(f"  POST /v1/chat/completions - Inference (proxied to ART vLLM)")
     logger.info(f"  GET  /v1/models           - List models")
 
-    # Initialize backend + register all role models on startup
-    logger.info("Initializing ART backend and registering models...")
+    # Initialize backend + register all 7 role models
+    logger.info("Initializing ART backend and registering 7 role models...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(_init_all_models())

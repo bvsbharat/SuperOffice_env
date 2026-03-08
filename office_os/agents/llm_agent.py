@@ -1,8 +1,8 @@
-"""LLM-powered agent using Claude or ART-trained models for structured decisions.
+"""LLM-powered agent using ART-trained models or Claude for structured decisions.
 
-Supports dual-mode inference:
-  1. Claude (Anthropic API / AWS Bedrock) — default, uses tool_use for structured output
-  2. ART-trained model (OpenAI-compatible endpoint on Northflank GPU) — after training
+Modes:
+  1. ART model (OpenAI-compatible endpoint on Northflank GPU) — primary, uses function calling
+  2. Claude (Anthropic API / AWS Bedrock) — alternative mode, uses tool_use
 """
 
 from __future__ import annotations
@@ -34,15 +34,6 @@ class AgentAction(BaseModel):
 class ReflectionOutput(BaseModel):
     """Structured reflection output."""
     insights: list[str] = Field(description="1-3 concise insights from recent events")
-
-
-# ── Bedrock/Anthropic model name helper ──────────────────────────────
-
-def _build_model_name(model: str, provider: str, aws_region: str) -> str:
-    """Build the pydantic-ai model string."""
-    if provider == "bedrock":
-        return model
-    return model
 
 
 def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
@@ -82,14 +73,11 @@ def _get_openai_client(base_url: str, api_key: str):
 
 class LLMAgent:
     """
-    Agent that uses Claude or ART-trained models for reliable decisions.
+    Agent that uses ART-trained models or Claude for decisions.
 
-    Supports dual-mode inference:
-      - Claude (Anthropic/Bedrock): Uses tool_use for structured output
-      - ART model (OpenAI-compatible on Northflank GPU): Uses function calling
-
-    When an ART endpoint is configured, the agent will use the fine-tuned model
-    instead of Claude. Falls back to Claude if the ART model fails.
+    Two separate modes (set at init, no automatic switching):
+      - ART model (OpenAI-compatible on Northflank GPU): set via set_art_endpoint()
+      - Claude (Anthropic/Bedrock): default if no ART endpoint set
     """
 
     def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
@@ -105,7 +93,7 @@ class LLMAgent:
 
         # ART model endpoint (set by ARTTrainer after training)
         self._art_endpoint: dict | None = None  # {base_url, api_key, model_name}
-        self.use_art_model = False  # Switch to True after training
+        self.use_art_model = False
 
         # Import role actions for validation
         from market.config import ROLE_ACTIONS
@@ -121,9 +109,9 @@ class LLMAgent:
             "api_key": api_key,
             "model_name": model_name,
         }
-        self._openai_client = None  # Reset client
+        self._openai_client = None
         self.use_art_model = True
-        logger.info(f"{self.role}: Switched to ART model at {base_url} ({model_name})")
+        logger.info(f"{self.role}: Using ART model at {base_url} ({model_name})")
 
     def clear_art_endpoint(self):
         """Revert to Claude for inference."""
@@ -148,44 +136,35 @@ class LLMAgent:
 
     def decide(self, observation: dict, turn: int) -> dict:
         """Decide on an action given an observation. Returns a validated action dict."""
-        # Store observation in memory
         summary = self._summarize_observation(observation)
         self.base.observe(turn, summary, importance=5.0)
 
-        # Build prompt
         user_msg = self._build_user_message(observation, turn)
-        self.last_user_message = user_msg  # Store for trajectory collection
+        self.last_user_message = user_msg
 
-        # Call LLM with structured output + retry
+        # Use whichever mode is active — no fallback between them
+        call_fn = self._call_art_model if self.use_art_model else self._call_structured
+        mode = "ART" if self.use_art_model else "Claude"
+
         action = None
-        for attempt in range(3):
+        for attempt in range(5):
             try:
-                if self.use_art_model and self._art_endpoint:
-                    action = self._call_art_model(user_msg)
-                else:
-                    action = self._call_structured(user_msg)
-                # Validate action is allowed for this role
+                action = call_fn(user_msg)
                 if action.action_type not in self._allowed_actions:
-                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying...")
+                    logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying ({attempt+1}/5)...")
                     action = None
                     continue
                 break
             except Exception as e:
-                logger.warning(f"LLM attempt {attempt+1}/3 for {self.role}: {type(e).__name__}: {e}")
-                # If ART model fails, fall back to Claude
-                if self.use_art_model and attempt == 1:
-                    logger.info(f"{self.role}: ART model failed, falling back to Claude")
-                    self.use_art_model = False
-                if attempt < 2:
+                logger.warning(f"{mode} attempt {attempt+1}/5 for {self.role}: {type(e).__name__}: {e}")
+                if attempt < 4:
                     import time
-                    time.sleep(1)
+                    time.sleep(2)
 
         if action is None:
-            return self._fallback_action(observation)
+            raise RuntimeError(f"{mode} model failed after 5 attempts for {self.role}")
 
         result = action.model_dump()
-
-        # Store decision as plan
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
         return result
 
@@ -218,13 +197,11 @@ class LLMAgent:
 
         choice = response.choices[0]
 
-        # Extract tool call
         if choice.message.tool_calls:
             tc = choice.message.tool_calls[0]
             data = json.loads(tc.function.arguments)
             return AgentAction.model_validate(data)
 
-        # Fallback: parse text response
         if choice.message.content:
             return self._parse_text_response(choice.message.content)
 
@@ -232,9 +209,7 @@ class LLMAgent:
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call Claude and parse response into a validated AgentAction."""
-        # Build the tool schema from AgentAction
         tool_schema = AgentAction.model_json_schema()
-        # Remove title/description that aren't needed in the properties
         properties = tool_schema.get("properties", {})
 
         response = self.client.messages.create(
@@ -254,20 +229,18 @@ class LLMAgent:
             tool_choice={"type": "tool", "name": "submit_action"},
         )
 
-        # Extract tool use result
         for block in response.content:
             if block.type == "tool_use" and block.name == "submit_action":
                 return AgentAction.model_validate(block.input)
 
-        # Fallback: try parsing text response
         for block in response.content:
             if hasattr(block, "text") and block.text:
                 return self._parse_text_response(block.text)
 
-        raise ValueError("No valid action in LLM response")
+        raise ValueError("No valid action in Claude response")
 
     def _parse_text_response(self, raw: str) -> AgentAction:
-        """Parse a text response into AgentAction (fallback if tool_use fails)."""
+        """Parse a text response into AgentAction."""
         text = raw.strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -283,7 +256,7 @@ class LLMAgent:
         raise ValueError(f"Could not parse action from text: {text[:200]}")
 
     def reflect(self, turn: int, observation: dict):
-        """Trigger a reflection cycle using structured output."""
+        """Trigger a reflection cycle."""
         context = self.base.get_context(turn)
         memories = context["relevant_memories"]
         if len(memories) < 3:
@@ -291,7 +264,6 @@ class LLMAgent:
 
         memory_text = "\n".join(f"- {m['description']}" for m in memories[:10])
 
-        # Use ART model for reflection if available
         if self.use_art_model and self._art_endpoint:
             try:
                 response = self.openai_client.chat.completions.create(
@@ -360,7 +332,6 @@ class LLMAgent:
             "",
         ]
 
-        # Role-specific urgency hints
         if self.role == "dev":
             in_progress = role_data.get("features_in_progress", [])
             ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
@@ -390,7 +361,6 @@ class LLMAgent:
                 parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
 
-        # Shared memory board — the team's collective knowledge
         shared_mem = role_data.pop("shared_memory", [])
         if shared_mem:
             parts.append("## SHARED TEAM MEMORY (all agents see this)")
@@ -440,61 +410,6 @@ class LLMAgent:
 
         parts.append("Pick the HIGHEST IMPACT action. Use the submit_action tool to respond.")
         return "\n".join(parts)
-
-    def _fallback_action(self, obs: dict) -> dict:
-        """Return a smart fallback action based on current state."""
-        role_data = obs.get("role_data", {})
-
-        if self.role == "dev":
-            # If features ready to ship, ship them
-            in_progress = role_data.get("features_in_progress", [])
-            ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
-            if ready:
-                return {"action_type": "SHIP_RELEASE", "target": "", "parameters": {}, "reasoning": "Features ready to ship", "message": None}
-            # If building something, continue
-            if in_progress:
-                return {"action_type": "BUILD_FEATURE", "target": in_progress[0]["name"], "parameters": {}, "reasoning": "Continue building feature", "message": None}
-            # Otherwise build from backlog
-            backlog = role_data.get("backlog", [])
-            target = backlog[0]["name"] if backlog else "SSO Integration"
-            return {"action_type": "BUILD_FEATURE", "target": target, "parameters": {}, "reasoning": "Building from backlog", "message": None}
-
-        elif self.role == "sales":
-            # Advance the most advanced customer in pipeline
-            pipeline = role_data.get("pipeline", [])
-            stage_priority = {"negotiation": 0, "proposal": 1, "demo": 2, "qualified": 3, "lead": 4, "visitor": 5}
-            pipeline_sorted = sorted(pipeline, key=lambda c: stage_priority.get(c.get("stage", "visitor"), 99))
-            if pipeline_sorted:
-                c = pipeline_sorted[0]
-                stage_actions = {
-                    "lead": "QUALIFY_LEAD",
-                    "qualified": "RUN_DEMO",
-                    "demo": "SEND_PROPOSAL",
-                    "proposal": "CLOSE_DEAL",
-                    "negotiation": "CLOSE_DEAL",
-                }
-                action = stage_actions.get(c["stage"], "FOLLOW_UP")
-                params = {"contract_tier": "monthly"} if action == "CLOSE_DEAL" else {}
-                return {"action_type": action, "target": c["name"], "parameters": params, "reasoning": f"Advancing {c['name']} from {c['stage']}", "message": None}
-            return {"action_type": "COLLECT_FEEDBACK", "target": "general", "parameters": {"feedback": "market feedback"}, "reasoning": "No customers in pipeline", "message": None}
-
-        elif self.role == "marketing":
-            budget = obs.get("budget_remaining", 0)
-            if budget >= 500:
-                return {"action_type": "LAUNCH_CAMPAIGN", "target": "Growth Campaign", "parameters": {}, "reasoning": "Driving traffic for leads", "message": None}
-            return {"action_type": "OPTIMIZE_FUNNEL", "target": "", "parameters": {}, "reasoning": "Free conversion optimization", "message": None}
-
-        elif self.role == "ceo":
-            return {"action_type": "REVIEW_STRATEGY", "target": "overall performance", "parameters": {}, "reasoning": "Reviewing company strategy", "message": None}
-
-        elif self.role == "hr":
-            return {"action_type": "PLAN_SPRINT", "target": "current priorities", "parameters": {}, "reasoning": "Planning team sprint", "message": None}
-
-        elif self.role == "customer":
-            return {"action_type": "EVALUATE_PRODUCT", "target": "", "parameters": {}, "reasoning": "Evaluating product quality", "message": None}
-
-        else:  # content
-            return {"action_type": "WRITE_BLOG", "target": "SaaS Growth Strategies", "parameters": {"topic": "growth"}, "reasoning": "Generating traffic and leads", "message": None}
 
     def _summarize_observation(self, obs: dict) -> str:
         """Create a brief text summary of an observation for memory."""
