@@ -30,38 +30,38 @@
   /* ── Monokai Pro Dark ── */
   color-scheme: dark;
 
-  /* Backgrounds — deep warm dark, Monokai-tinted */
-  --color-surface: #161614;
-  --color-panel: rgba(22, 21, 18, 0.88);
-  --color-card-bg: rgba(30, 29, 24, 0.68);
+  /* Backgrounds — fully opaque dark */
+  --color-surface: #000000;
+  --color-panel: #0a0a0a;
+  --color-card-bg: #141414;
   --color-hover-bg: rgba(117, 113, 94, 0.12);
 
-  /* Borders — muted Monokai olive-gray */
-  --color-border: rgba(117, 113, 94, 0.28);
-  --color-border-alpha: rgba(117, 113, 94, 0.18);
-  --color-card-border: rgba(117, 113, 94, 0.32);
+  /* Borders — visible on black */
+  --color-border: rgba(140, 136, 115, 0.35);
+  --color-border-alpha: rgba(140, 136, 115, 0.22);
+  --color-card-border: rgba(140, 136, 115, 0.38);
 
-  /* Text — Monokai foreground palette */
+  /* Text — bright enough to read on black */
   --color-text-primary: #f8f8f2;
-  --color-text-secondary: #cfcfc2;
-  --color-text-muted: #75715e;
-  --color-text-faint: #49483e;
+  --color-text-secondary: #d5d5c8;
+  --color-text-muted: #a8a490;
+  --color-text-faint: #7a7666;
 
   /* Tooltips */
-  --color-tooltip-bg: rgba(19, 18, 15, 0.96);
+  --color-tooltip-bg: #0a0a0a;
   --color-tooltip-border: rgba(117, 113, 94, 0.3);
 
   /* Glass / frosted layers */
-  --frosted-bg: rgba(22, 21, 18, 0.62);
-  --callout-bg: rgba(22, 21, 18, 0.78);
+  --frosted-bg: #0a0a0a;
+  --callout-bg: #0e0e0e;
 
   /* Speech bubbles */
-  --speech-bubble-bg: rgba(19, 18, 15, 0.92);
-  --speech-bubble-tail: rgba(19, 18, 15, 0.92);
+  --speech-bubble-bg: #0a0a0a;
+  --speech-bubble-tail: #0a0a0a;
 
   /* Scrollbar */
-  --scrollbar-track: rgba(22, 21, 18, 0.5);
-  --scrollbar-thumb: rgba(117, 113, 94, 0.35);
+  --scrollbar-track: #0a0a0a;
+  --scrollbar-thumb: #2a2a2a;
 
   /* Map */
   --map-bg-dark: #100f0d;

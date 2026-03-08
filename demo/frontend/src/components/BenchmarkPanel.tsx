@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Trophy, X, BarChart3, Medal } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import type { BenchmarkRun } from '../store/useStore'
 
@@ -9,7 +10,7 @@ import type { BenchmarkRun } from '../store/useStore'
 const KNOWN_MODELS: { id: string; name: string; provider: string; badge: string; badgeColor: string }[] = [
   { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5',  provider: 'bedrock', badge: 'DEFAULT',  badgeColor: '#22c55e' },
   { id: 'us.anthropic.claude-sonnet-4-6[1m]',              name: 'Claude Sonnet 4.6', provider: 'bedrock', badge: 'BALANCED', badgeColor: '#6366f1' },
-  { id: 'us.anthropic.claude-opus-4-6-v1[1m]',             name: 'Claude Opus 4.6',   provider: 'bedrock', badge: 'APEX',     badgeColor: '#a855f7' },
+  { id: 'us.anthropic.claude-opus-4-6-v1',                  name: 'Claude Opus 4.6',   provider: 'bedrock', badge: 'APEX',     badgeColor: '#a855f7' },
   { id: 'mistral.ministral-3-14b-instruct',                 name: 'Ministral 3 14B',   provider: 'bedrock', badge: 'EU',       badgeColor: '#eab308' },
   { id: 'qwen.qwen3-next-80b-a3b',                          name: 'Qwen3 80B',         provider: 'bedrock', badge: 'NEW',      badgeColor: '#d97706' },
   { id: 'openai.gpt-oss-safeguard-120b',                    name: 'GPT OSS 120B',      provider: 'bedrock', badge: 'OPEN',     badgeColor: '#10b981' },
@@ -228,7 +229,7 @@ export function BenchmarkPanel() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             className="fixed inset-0 z-40"
-            style={{ background: 'rgba(0,0,0,0.2)' }}
+            style={{ background: 'rgba(0,0,0,0.75)' }}
             onClick={toggleBenchmarkPanel}
           />
         )}
@@ -256,7 +257,7 @@ export function BenchmarkPanel() {
               style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
             >
               <div className="flex items-center gap-2">
-                <span className="text-base">🏆</span>
+                <Trophy size={18} style={{ color: '#fbbf24' }} />
                 <div>
                   <div className="text-xs font-bold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>MODEL LEADERBOARD</div>
                   <div className="text-[9px]" style={{ color: 'var(--color-text-faint)' }}>
@@ -268,9 +269,9 @@ export function BenchmarkPanel() {
               <button
                 onClick={toggleBenchmarkPanel}
                 className="w-6 h-6 flex items-center justify-center rounded transition-colors"
-                style={{ color: 'var(--color-text-faint)', fontSize: 14 }}
+                style={{ color: 'var(--color-text-faint)' }}
               >
-                ×
+                <X size={14} />
               </button>
             </div>
 
@@ -314,8 +315,11 @@ export function BenchmarkPanel() {
             {/* Entries */}
             <div className="flex-1 overflow-y-auto">
               {entries.map((entry, idx) => (
-                <div
+                <motion.div
                   key={entry.modelName}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.05, duration: 0.3, ease: 'easeOut' }}
                   className="grid items-center px-4 py-2.5 transition-colors"
                   style={{
                     gridTemplateColumns: '28px 1fr 60px 60px 48px',
@@ -435,12 +439,12 @@ export function BenchmarkPanel() {
                       <span className="text-[10px]" style={{ color: 'var(--color-text-faint)' }}>—</span>
                     )}
                   </div>
-                </div>
+                </motion.div>
               ))}
 
               {entries.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 gap-2">
-                  <span className="text-2xl">📊</span>
+                  <BarChart3 size={28} style={{ color: 'var(--color-text-faint)' }} />
                   <span className="text-xs" style={{ color: 'var(--color-text-faint)' }}>
                     Run a simulation to record the first score
                   </span>

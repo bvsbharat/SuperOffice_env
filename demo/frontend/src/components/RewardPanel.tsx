@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from 'recharts'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Trophy, ClipboardList, Search, BookOpen, X, Maximize, Medal, Target, Ruler, Handshake, BarChart3, AlertTriangle, Microscope } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { AGENT_ORDER, agentIconPath } from '../types'
 import type { AgentId } from '../types'
@@ -43,11 +44,12 @@ export function RewardPanel() {
   const pipeline = useStore(s => s.pipeline)
 
   const [fullView, setFullView] = useState(false)
-  const [fullTab, setFullTab] = useState<'logs' | 'scoring' | 'guide'>('scoring')
+  const [fullTab, setFullTab] = useState<'logs' | 'scoring' | 'guide' | 'validate'>('scoring')
   const [fullFilter, setFullFilter] = useState<AgentId | 'all'>('all')
 
   // Rubric validation state
   const [validating, setValidating] = useState(false)
+  const [streamText, setStreamText] = useState('')
   const [validation, setValidation] = useState<{
     overall_score: number
     grade: string
@@ -63,15 +65,45 @@ export function RewardPanel() {
     setValidating(true)
     setValidationError(null)
     setValidation(null)
+    setStreamText('')
     try {
       const res = await fetch('/api/validate-rubric', { method: 'POST' })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }))
-        throw new Error(err.detail || `HTTP ${res.status}: ${res.statusText}`)
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
       }
-      const data = await res.json()
-      setValidatedBy(data.validated_by ?? null)
-      setValidation(data)
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let accumulated = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6).trim()
+          if (!payload) continue
+          try {
+            const evt = JSON.parse(payload)
+            if (evt.type === 'chunk') {
+              accumulated += evt.text
+              setStreamText(accumulated)
+            } else if (evt.type === 'done') {
+              setValidation(evt.result)
+              setValidatedBy(evt.result?.validated_by ?? null)
+            } else if (evt.type === 'error') {
+              throw new Error(evt.detail)
+            }
+          } catch (pe: any) {
+            if (pe.message && !pe.message.includes('Unexpected')) throw pe
+          }
+        }
+      }
     } catch (e: any) {
       setValidationError(e.message)
     } finally {
@@ -198,7 +230,7 @@ export function RewardPanel() {
               title="Expand full log view"
               style={{ padding: '2px 6px', fontSize: 9, fontWeight: 600, borderRadius: 3, border: '1px solid var(--color-border)', background: 'var(--color-card-bg)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
             >
-              ⛶ Full
+              <Maximize size={9} className="inline mr-0.5" /> Full
             </button>
             {/* Download CSV */}
             <button
@@ -237,7 +269,7 @@ export function RewardPanel() {
                   const name = agents[props.payload?.id]?.name || props.payload?.id
                   return [v.toFixed(2), name]
                 }}
-                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                cursor={{ fill: 'var(--color-border)' }}
               />
               <Bar dataKey="reward" radius={[3, 3, 0, 0]} maxBarSize={24}>
                 {agentRewardData.map((entry) => (
@@ -429,33 +461,35 @@ export function RewardPanel() {
 
       {/* Full-screen reward modal — fixed dark theme regardless of app theme */}
       {fullView && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '94vw', maxWidth: 1100, height: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 10, background: '#111113', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)' }}>
 
             {/* ── Modal header ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#f4f4f5' }}>Reward Analysis</span>
-              <span style={{ fontSize: 10, color: '#52525b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>Reward Analysis</span>
+              <span style={{ fontSize: 10, color: 'var(--color-text-faint)' }}>
                 Episode {episode} · {allActionLogs.length} actions · global{' '}
                 <span style={{ color: globalReward >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
                   {globalReward >= 0 ? '+' : ''}{globalReward.toFixed(3)}
                 </span>
               </span>
               <div style={{ flex: 1 }} />
-              {([['scoring','🏆 Scoring'],['logs','📋 Log'],['guide','📖 RL Guide']] as const).map(([t, label]) => (
-                <button key={t} onClick={() => setFullTab(t)} style={{ padding: '4px 14px', fontSize: 10, fontWeight: 700, borderRadius: 4, cursor: 'pointer', border: fullTab === t ? 'none' : '1px solid rgba(255,255,255,0.1)', background: fullTab === t ? '#f4f4f5' : 'transparent', color: fullTab === t ? '#111113' : '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {([['scoring', 'Scoring', Trophy] as const, ['logs', 'Log', ClipboardList] as const, ['validate', 'Validate', Search] as const, ['guide', 'RL Guide', BookOpen] as const]).map(([t, label, Icon]) => (
+                <button key={t} onClick={() => setFullTab(t)} className="flex items-center gap-1.5" style={{ padding: '4px 14px', fontSize: 10, fontWeight: 700, borderRadius: 4, cursor: 'pointer', border: fullTab === t ? 'none' : '1px solid var(--color-border)', background: fullTab === t ? '#ffffff' : 'transparent', color: fullTab === t ? '#000000' : 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <Icon size={11} />
                   {label}
                 </button>
               ))}
               <button onClick={downloadCSV} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, borderRadius: 4, border: '1px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.08)', color: '#22c55e', cursor: 'pointer' }}>↓ CSV</button>
-              <button onClick={downloadJSON} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#71717a', cursor: 'pointer' }}>↓ JSON</button>
-              <button onClick={() => setFullView(false)} style={{ padding: '4px 10px', fontSize: 14, fontWeight: 700, borderRadius: 4, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#71717a', cursor: 'pointer' }}>✕</button>
+              <button onClick={downloadJSON} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-faint)', cursor: 'pointer' }}>↓ JSON</button>
+              <button onClick={() => setFullView(false)} className="flex items-center justify-center" style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-faint)', cursor: 'pointer' }}><X size={14} /></button>
             </div>
 
+            <AnimatePresence mode="wait">
             {/* ── SCORING TAB ── */}
-            {fullTab === 'scoring' && (() => {
+            {fullTab === 'scoring' && (<motion.div key="scoring" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{(() => {
               // Fixed palette — white, green, red only
-              const C = { bg: '#111113', card: '#1c1c1f', border: 'rgba(255,255,255,0.07)', text: '#f4f4f5', muted: '#71717a', faint: '#3f3f46', green: '#22c55e', red: '#ef4444' }
+              const C = { bg: 'var(--color-panel)', card: 'var(--color-card-bg)', border: 'var(--color-border)', text: 'var(--color-text-primary)', muted: 'var(--color-text-faint)', faint: 'var(--color-border)', green: '#22c55e', red: '#ef4444' }
 
               const agentStats = AGENT_ORDER.map(id => {
                 const logs = allActionLogs.filter(r => r.agent === id)
@@ -468,7 +502,7 @@ export function RewardPanel() {
               }).sort((a, b) => b.total - a.total)
 
               const maxTotal = Math.max(...agentStats.map(a => Math.abs(a.total)), 1)
-              const medals = ['🥇', '🥈', '🥉']
+              const medalColors = ['#fbbf24', '#9ca3af', '#d97706']
 
               const STAGE_REWARDS_DISPLAY: Record<string, Record<string, number>> = {
                 visitor:    { content: 0.5 },
@@ -492,8 +526,8 @@ export function RewardPanel() {
                     {agentStats.map((a, rank) => (
                       <div key={a.id} style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: C.card, border: `1px solid ${C.border}`, overflow: 'hidden', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, minWidth: 0 }}>
-                          <span style={{ fontSize: 15, minWidth: 22, flexShrink: 0 }}>{medals[rank] || `#${rank + 1}`}</span>
-                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: '2px solid rgba(255,255,255,0.15)', flexShrink: 0 }} alt="" />
+                          <span style={{ minWidth: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{rank < 3 ? <Medal size={16} style={{ color: medalColors[rank] }} /> : <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-faint)' }}>#{rank + 1}</span>}</span>
+                          <img src={agentIconPath(a.id as AgentId)} style={{ width: 26, height: 26, borderRadius: '50%', outline: '2px solid var(--color-border)', flexShrink: 0 }} alt="" />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
                             <div style={{ fontSize: 9, color: C.muted }}>{a.actions} actions</div>
@@ -609,7 +643,7 @@ export function RewardPanel() {
                         { role: 'customer', action: 'RENEW_CONTRACT',  pts: '+3.0', note: 'Contract renewed' },
                       ].map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
-                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.role}</span>
+                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.role}</span>
                           <span style={{ fontSize: 10, fontWeight: 600, color: C.text, flex: 1 }}>{b.action}</span>
                           <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 800, color: C.green, minWidth: 36, textAlign: 'right' }}>{b.pts}</span>
                           <span style={{ fontSize: 9, color: C.muted, minWidth: 110 }}>{b.note}</span>
@@ -627,7 +661,7 @@ export function RewardPanel() {
                         { who: 'marketing', what: 'Campaign using published content',        pts: '+0.5', pair: 'with content' },
                       ].map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
-                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>
+                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>
                           <span style={{ fontSize: 10, color: C.text, flex: 1 }}>{b.what}</span>
                           <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 800, color: C.green, minWidth: 36, textAlign: 'right' }}>{b.pts}</span>
                           <span style={{ fontSize: 9, color: C.muted, minWidth: 80 }}>{b.pair}</span>
@@ -645,61 +679,235 @@ export function RewardPanel() {
                         { who: 'dev',       what: 'Vaporware — content before ship',   pts: '−5.0', note: 'Unshipped feature in content' },
                       ].map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
-                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'rgba(255,255,255,0.06)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>
+                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>
                           <span style={{ fontSize: 10, color: C.text, flex: 1 }}>{b.what}</span>
                           <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 800, color: C.red, minWidth: 36, textAlign: 'right' }}>{b.pts}</span>
                           <span style={{ fontSize: 9, color: C.muted, minWidth: 110 }}>{b.note}</span>
                         </div>
                       ))}
                     </div>
+
                   </div>
                 </div>
               )
-            })()}
+            })()}</motion.div>)}
+
+            {/* ── VALIDATE TAB ── */}
+            {fullTab === 'validate' && (<motion.div key="validate" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{(() => {
+              const V = { bg: 'var(--color-panel)', card: 'var(--color-card-bg)', border: 'var(--color-border)', text: 'var(--color-text-primary)', muted: 'var(--color-text-faint)', faint: 'var(--color-border)', green: '#22c55e', red: '#ef4444', yellow: '#f59e0b', purple: '#a855f7' }
+              return (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+                  <div style={{ width: '100%' }}>
+
+                    {/* Header + Button */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: V.text, marginBottom: 4 }}>Validate Scoring Rubric</div>
+                        <div style={{ fontSize: 11, color: V.muted, lineHeight: 1.5 }}>
+                          Send the full reward function to Claude Opus 4.6 for expert analysis against PPO, GRPO, RLHF, and multi-agent RL principles.
+                        </div>
+                      </div>
+                      <button
+                        onClick={runValidation}
+                        disabled={validating}
+                        style={{
+                          padding: '10px 22px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: validating ? 'not-allowed' : 'pointer',
+                          border: 'none', background: validating ? V.faint : V.purple,
+                          color: validating ? V.muted : '#fff', whiteSpace: 'nowrap', flexShrink: 0,
+                          opacity: validating ? 0.7 : 1,
+                        }}
+                      >
+                        {validating ? 'Analyzing...' : 'Run Validation'}
+                      </button>
+                    </div>
+
+                    {/* Streaming output */}
+                    {validating && (
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ height: 3, borderRadius: 2, background: V.faint, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', background: V.purple, width: '40%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                          </div>
+                        </div>
+                        {streamText ? (
+                          <pre style={{
+                            padding: '14px 16px', borderRadius: 7, background: 'var(--color-surface)',
+                            border: `1px solid ${V.border}`, fontSize: 10, fontFamily: 'monospace',
+                            color: V.muted, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            maxHeight: 400, overflowY: 'auto',
+                          }}>
+                            {streamText}
+                            <span style={{ color: V.purple, animation: 'pulse 1s infinite' }}>|</span>
+                          </pre>
+                        ) : (
+                          <div style={{ padding: '14px 16px', borderRadius: 7, background: V.card, border: `1px solid ${V.border}`, fontSize: 10, color: V.muted }}>
+                            Connecting to Claude Opus 4.6...
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Error */}
+                    {validationError && (
+                      <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 11, color: V.red }}>
+                        {validationError}
+                      </div>
+                    )}
+
+                    {/* No results yet */}
+                    {!validation && !validating && !validationError && (
+                      <div style={{ padding: 48, textAlign: 'center', borderRadius: 8, background: V.card, border: `1px solid ${V.border}` }}>
+                        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Search size={32} style={{ color: 'var(--color-text-faint)' }} /></div>
+                        <div style={{ fontSize: 12, color: V.text, fontWeight: 600, marginBottom: 4 }}>No validation yet</div>
+                        <div style={{ fontSize: 10, color: V.muted }}>Click "Run Validation" to get an expert RL analysis of your scoring rubric</div>
+                      </div>
+                    )}
+
+                    {/* Results */}
+                    {validation && (
+                      <div>
+                        {/* Score header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24, padding: '18px 22px', borderRadius: 8, background: V.card, border: `1px solid ${V.border}` }}>
+                          <div style={{ textAlign: 'center', minWidth: 64 }}>
+                            <div style={{ fontSize: 42, fontWeight: 900, fontFamily: 'monospace', color: validation.overall_score >= 75 ? V.green : validation.overall_score >= 50 ? V.yellow : V.red, lineHeight: 1 }}>
+                              {validation.overall_score}
+                            </div>
+                            <div style={{ fontSize: 10, color: V.muted, marginTop: 4 }}>/ 100</div>
+                          </div>
+                          <div style={{ width: 1, height: 50, background: V.border }} />
+                          <div style={{ textAlign: 'center', minWidth: 44 }}>
+                            <div style={{ fontSize: 36, fontWeight: 900, color: validation.overall_score >= 75 ? V.green : validation.overall_score >= 50 ? V.yellow : V.red, lineHeight: 1 }}>
+                              {validation.grade}
+                            </div>
+                            <div style={{ fontSize: 9, color: V.muted, marginTop: 4 }}>GRADE</div>
+                          </div>
+                          <div style={{ width: 1, height: 50, background: V.border }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: V.text, lineHeight: 1.6 }}>{validation.summary}</div>
+                            {validatedBy && <div style={{ fontSize: 9, color: V.muted, marginTop: 6 }}>Validated by <span style={{ color: V.purple, fontWeight: 600 }}>{validatedBy}</span></div>}
+                          </div>
+                        </div>
+
+                        {/* Two-column: Strengths + Gaps */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                          {/* Strengths */}
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: V.green, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                              Strengths ({validation.strengths.length})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {validation.strengths.map((s: any, i: number) => (
+                                <div key={i} style={{ padding: '10px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: V.text, marginBottom: 3 }}>{s.title}</div>
+                                  <div style={{ fontSize: 10, color: V.muted, lineHeight: 1.55 }}>{s.detail}</div>
+                                  {s.principle && <div style={{ fontSize: 8, color: V.green, marginTop: 5, fontWeight: 600 }}>{s.principle}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Gaps */}
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: V.red, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                              Gaps ({validation.gaps.length})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {validation.gaps.map((g: any, i: number) => {
+                                const gc = g.severity === 'high' ? V.red : g.severity === 'medium' ? V.yellow : V.muted
+                                return (
+                                  <div key={i} style={{ padding: '10px 12px', borderRadius: 6, background: `${gc}08`, border: `1px solid ${gc}20` }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: V.text, flex: 1 }}>{g.title}</span>
+                                      <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 3, fontWeight: 700, textTransform: 'uppercase', background: `${gc}15`, color: gc }}>{g.severity}</span>
+                                    </div>
+                                    <div style={{ fontSize: 10, color: V.muted, lineHeight: 1.55 }}>{g.detail}</div>
+                                    {g.principle && <div style={{ fontSize: 8, color: gc, marginTop: 5, fontWeight: 600 }}>{g.principle}</div>}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Recommendations — full width */}
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: V.purple, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                            Recommendations ({validation.recommendations.length})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {validation.recommendations.map((r: any, i: number) => {
+                              const rc = r.priority === 'high' ? V.red : r.priority === 'medium' ? V.yellow : V.muted
+                              return (
+                                <div key={i} style={{ padding: '10px 14px', borderRadius: 6, background: 'rgba(168,85,247,0.04)', border: '1px solid rgba(168,85,247,0.12)', display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start' }}>
+                                  <div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: V.text, marginBottom: 3 }}>{r.title}</div>
+                                    <div style={{ fontSize: 10, color: V.muted, lineHeight: 1.55 }}>{r.detail}</div>
+                                    {r.impact && <div style={{ fontSize: 9, color: V.purple, marginTop: 5, fontStyle: 'italic' }}>Impact: {r.impact}</div>}
+                                  </div>
+                                  <span style={{ fontSize: 8, padding: '2px 7px', borderRadius: 3, fontWeight: 700, textTransform: 'uppercase', background: `${rc}15`, color: rc, whiteSpace: 'nowrap' }}>{r.priority}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}</motion.div>)}
 
             {/* ── ACTION LOG TAB ── */}
-            {fullTab === 'logs' && <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, background: '#0d0d0f' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#52525b', marginRight: 4 }}>FILTER:</span>
+            {fullTab === 'logs' && <motion.div key="logs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px', borderBottom: '1px solid var(--color-border)', flexShrink: 0, background: 'var(--color-surface)' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-text-faint)', marginRight: 4 }}>FILTER:</span>
                 {(['all', ...AGENT_ORDER] as (AgentId | 'all')[]).map(id => (
-                  <button key={id} onClick={() => setFullFilter(id)} style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', background: fullFilter === id ? '#f4f4f5' : 'transparent', color: fullFilter === id ? '#111113' : '#71717a' }}>
+                  <button key={id} onClick={() => setFullFilter(id)} style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, borderRadius: 10, border: '1px solid var(--color-border)', cursor: 'pointer', background: fullFilter === id ? 'var(--color-text-primary)' : 'transparent', color: fullFilter === id ? 'var(--color-panel)' : 'var(--color-text-faint)' }}>
                     {id === 'all' ? 'All' : (agents[id as AgentId]?.name || id)}
                   </button>
                 ))}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '48px 110px 150px 1fr 74px', padding: '5px 16px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#3f3f46', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '48px 110px 150px 1fr 74px', padding: '5px 16px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-faint)', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
                 <span>Step</span><span>Agent</span><span>Action</span><span>Outcome</span><span style={{ textAlign: 'right' }}>Reward</span>
               </div>
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {allActionLogs.filter(r => fullFilter === 'all' || r.agent === fullFilter).map((r, i) => {
-                  const agentColor = agents[r.agent as AgentId]?.color || '#71717a'
+                  const agentColor = agents[r.agent as AgentId]?.color || 'var(--color-text-faint)'
                   const pos = r.reward >= 0
                   return (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '48px 110px 150px 1fr 74px', alignItems: 'center', padding: '5px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                      <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#52525b' }}>t{r.step}</span>
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '48px 110px 150px 1fr 74px', alignItems: 'center', padding: '5px 16px', borderBottom: '1px solid var(--color-border)', background: i % 2 === 0 ? 'transparent' : 'var(--color-card-bg)' }}>
+                      <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--color-text-faint)' }}>t{r.step}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <img src={agentIconPath(r.agent as AgentId)} style={{ width: 16, height: 16, borderRadius: '50%', outline: `1.5px solid ${agentColor}` }} alt="" />
                         <span style={{ fontSize: 10, fontWeight: 600, color: agentColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.agentName}</span>
                       </div>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: '#f4f4f5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.action}</span>
-                      <span style={{ fontSize: 9, color: '#71717a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{r.outcome || '—'}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.action}</span>
+                      <span style={{ fontSize: 9, color: 'var(--color-text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{r.outcome || '—'}</span>
                       <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, textAlign: 'right', color: pos ? '#22c55e' : '#ef4444' }}>{pos ? '+' : ''}{r.reward.toFixed(3)}</span>
                     </div>
                   )
                 })}
                 {allActionLogs.filter(r => fullFilter === 'all' || r.agent === fullFilter).length === 0 && (
-                  <div style={{ padding: 32, textAlign: 'center', color: '#52525b', fontSize: 12 }}>No actions recorded yet</div>
+                  <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-faint)', fontSize: 12 }}>No actions recorded yet</div>
                 )}
               </div>
-            </>}
+            </motion.div>}
 
             {/* ── RL GUIDE TAB ── */}
-            {fullTab === 'guide' && (() => {
-              const C = { bg: '#111113', card: '#1c1c1f', border: 'rgba(255,255,255,0.07)', text: '#f4f4f5', muted: '#71717a', faint: '#3f3f46', green: '#22c55e', red: '#ef4444', yellow: '#f59e0b' }
+            {fullTab === 'guide' && (<motion.div key="guide" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{(() => {
+              const C = { bg: 'var(--color-panel)', card: 'var(--color-card-bg)', border: 'var(--color-border)', text: 'var(--color-text-primary)', muted: 'var(--color-text-faint)', faint: 'var(--color-border)', green: '#22c55e', red: '#ef4444', yellow: '#f59e0b' }
 
+              const sectionIcons: Record<string, typeof Target> = {
+                'Reward Signal Design': Target,
+                'Policy Optimization (PPO / GRPO)': Ruler,
+                'Multi-Agent Collaboration': Handshake,
+                'Evaluation & Metrics': BarChart3,
+                'Common Pitfalls': AlertTriangle,
+                'RLHF vs This RL Sim': Microscope,
+              }
               const sections: { emoji: string; title: string; items: { label: string; body: string; tag?: string; tagColor?: string }[] }[] = [
                 {
-                  emoji: '🎯',
+                  emoji: 'target',
                   title: 'Reward Signal Design',
                   items: [
                     { label: 'Dense > Sparse', body: 'Provide reward at every meaningful step, not just at episode end. Agents learning from only final rewards suffer from credit assignment — they cannot tell which early action caused the outcome. This simulation rewards each agent action immediately.', tag: 'CRITICAL', tagColor: C.red },
@@ -710,7 +918,7 @@ export function RewardPanel() {
                   ],
                 },
                 {
-                  emoji: '📐',
+                  emoji: 'ruler',
                   title: 'Policy Optimization (PPO / GRPO)',
                   items: [
                     { label: 'PPO Trust Region', body: 'Proximal Policy Optimization clips gradient updates so the new policy never strays too far from the current one in a single step. This prevents catastrophic forgetting and training instability. Clip ratio ε = 0.1–0.2 is typical.', tag: 'ALGORITHM', tagColor: '#6366f1' },
@@ -720,7 +928,7 @@ export function RewardPanel() {
                   ],
                 },
                 {
-                  emoji: '🤝',
+                  emoji: 'handshake',
                   title: 'Multi-Agent Collaboration',
                   items: [
                     { label: 'Reward Sharing Incentivizes Teamwork', body: 'When closing a deal, ALL agents get a share (sales +10, CEO +5, marketing +3, dev +2…). This creates cooperative incentives. Agents learn that helping teammates succeed is in their own interest — a key alignment technique for multi-agent RL.', tag: 'THIS SIM', tagColor: C.green },
@@ -730,7 +938,7 @@ export function RewardPanel() {
                   ],
                 },
                 {
-                  emoji: '📊',
+                  emoji: 'barchart',
                   title: 'Evaluation & Metrics',
                   items: [
                     { label: 'Global Reward ≠ Quality', body: 'Cumulative reward is the RL objective, not a business metric. Always pair it with real KPIs (revenue, NPS, conversion rate) to check they correlate. A model that hacks the reward while hurting revenue is worse than no RL at all.', tag: 'WARNING', tagColor: C.yellow },
@@ -741,7 +949,7 @@ export function RewardPanel() {
                   ],
                 },
                 {
-                  emoji: '⚠️',
+                  emoji: 'alert',
                   title: 'Common Pitfalls',
                   items: [
                     { label: 'Reward Hacking Examples', body: '"Paperclip maximizer": agent obsessively does one action that gives small but consistent reward rather than learning the optimal strategy. Fix: reward diversity bonus, entropy regularization, or action variety penalty.', tag: 'PITFALL', tagColor: C.red },
@@ -752,7 +960,7 @@ export function RewardPanel() {
                   ],
                 },
                 {
-                  emoji: '🔬',
+                  emoji: 'microscope',
                   title: 'RLHF vs This RL Sim',
                   items: [
                     { label: 'RLHF Pipeline', body: 'Standard RLHF: (1) SFT on demonstrations → (2) Train reward model on human preferences → (3) PPO against reward model. This sim skips the preference step and uses a hand-coded reward function instead — closer to classical RL than RLHF.' },
@@ -773,143 +981,11 @@ export function RewardPanel() {
                       </div>
                     </div>
 
-                    {/* ── Rubric Validator ── */}
-                    <div style={{ marginBottom: 28, padding: '16px 18px', borderRadius: 8, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: validation || validating || validationError ? 16 : 0 }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>
-                            Validate Rubric vs RL Best Practices
-                          </div>
-                          <div style={{ fontSize: 10, color: C.muted }}>
-                            Send the current reward function to <span style={{ color: '#a855f7', fontWeight: 600 }}>Claude Opus 4.6</span> for expert RL analysis — strengths, gaps, and recommendations.
-                          </div>
-                        </div>
-                        <button
-                          onClick={runValidation}
-                          disabled={validating}
-                          style={{
-                            padding: '7px 16px', fontSize: 11, fontWeight: 700, borderRadius: 5, cursor: validating ? 'not-allowed' : 'pointer',
-                            border: 'none', background: validating ? '#3f3f46' : '#a855f7',
-                            color: validating ? C.muted : '#fff', whiteSpace: 'nowrap', flexShrink: 0,
-                            opacity: validating ? 0.7 : 1,
-                          }}
-                        >
-                          {validating ? '⏳ Analyzing...' : '🔍 Validate with Opus 4.6'}
-                        </button>
-                      </div>
-
-                      {/* Loading bar */}
-                      {validating && (
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ height: 3, borderRadius: 2, background: C.faint, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', background: '#a855f7', width: '60%', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                          </div>
-                          <div style={{ fontSize: 9, color: C.muted, marginTop: 4 }}>Opus 4.6 is reviewing your reward function against RL theory…</div>
-                        </div>
-                      )}
-
-                      {/* Error */}
-                      {validationError && (
-                        <div style={{ padding: '8px 12px', borderRadius: 5, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 10, color: C.red }}>
-                          {validationError}
-                        </div>
-                      )}
-
-                      {/* Results */}
-                      {validation && (
-                        <div>
-                          {/* Score header */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, padding: '12px 14px', borderRadius: 6, background: C.card, border: `1px solid ${C.border}` }}>
-                            <div style={{ textAlign: 'center', minWidth: 60 }}>
-                              <div style={{ fontSize: 32, fontWeight: 900, fontFamily: 'monospace', color: validation.overall_score >= 75 ? C.green : validation.overall_score >= 50 ? C.yellow : C.red, lineHeight: 1 }}>
-                                {validation.overall_score}
-                              </div>
-                              <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>/ 100</div>
-                            </div>
-                            <div style={{ width: 1, height: 40, background: C.border }} />
-                            <div style={{ textAlign: 'center', minWidth: 36 }}>
-                              <div style={{ fontSize: 28, fontWeight: 900, color: validation.overall_score >= 75 ? C.green : validation.overall_score >= 50 ? C.yellow : C.red, lineHeight: 1 }}>
-                                {validation.grade}
-                              </div>
-                              <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>GRADE</div>
-                            </div>
-                            <div style={{ width: 1, height: 40, background: C.border }} />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 10, color: C.text, lineHeight: 1.55, marginBottom: 4 }}>{validation.summary}</div>
-                        {validatedBy && <div style={{ fontSize: 8, color: C.muted }}>Validated by: <span style={{ color: '#a855f7', fontWeight: 600 }}>{validatedBy}</span></div>}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                            {/* Strengths */}
-                            <div>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-                                ✓ Strengths ({validation.strengths.length})
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                {validation.strengths.map((s, i) => (
-                                  <div key={i} style={{ padding: '7px 10px', borderRadius: 5, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: C.text, marginBottom: 2 }}>{s.title}</div>
-                                    <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.5, marginBottom: 3 }}>{s.detail}</div>
-                                    <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(34,197,94,0.12)', color: C.green, fontWeight: 600 }}>{s.principle}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Gaps */}
-                            <div>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: C.red, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-                                ✗ Gaps ({validation.gaps.length})
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                {validation.gaps.map((g, i) => {
-                                  const gc = g.severity === 'high' ? C.red : g.severity === 'medium' ? C.yellow : C.muted
-                                  return (
-                                    <div key={i} style={{ padding: '7px 10px', borderRadius: 5, background: `${gc}09`, border: `1px solid ${gc}25` }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                        <span style={{ fontSize: 10, fontWeight: 700, color: C.text, flex: 1 }}>{g.title}</span>
-                                        <span style={{ fontSize: 7, padding: '1px 5px', borderRadius: 3, background: `${gc}18`, color: gc, fontWeight: 700, textTransform: 'uppercase' }}>{g.severity}</span>
-                                      </div>
-                                      <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.5, marginBottom: 3 }}>{g.detail}</div>
-                                      <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: `${gc}12`, color: gc, fontWeight: 600 }}>{g.principle}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Recommendations */}
-                          <div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-                              💡 Recommendations ({validation.recommendations.length})
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                              {validation.recommendations.map((r, i) => {
-                                const rc = r.priority === 'high' ? C.red : r.priority === 'medium' ? C.yellow : C.muted
-                                return (
-                                  <div key={i} style={{ padding: '8px 12px', borderRadius: 5, background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.15)', display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'start' }}>
-                                    <div>
-                                      <div style={{ fontSize: 10, fontWeight: 700, color: C.text, marginBottom: 2 }}>{r.title}</div>
-                                      <div style={{ fontSize: 9, color: C.muted, lineHeight: 1.5 }}>{r.detail}</div>
-                                      {r.impact && <div style={{ fontSize: 8, color: '#a855f7', marginTop: 3, fontStyle: 'italic' }}>Impact: {r.impact}</div>}
-                                    </div>
-                                    <span style={{ fontSize: 7, padding: '2px 6px', borderRadius: 3, background: `${rc}18`, color: rc, fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{r.priority}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
                     {sections.map(sec => (
                       <div key={sec.title} style={{ marginBottom: 28 }}>
                         {/* Section header */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
-                          <span style={{ fontSize: 18 }}>{sec.emoji}</span>
+                          {(() => { const SIcon = sectionIcons[sec.title]; return SIcon ? <SIcon size={18} style={{ color: C.text, flexShrink: 0 }} /> : null })()}
                           <span style={{ fontSize: 13, fontWeight: 800, color: C.text, letterSpacing: '-0.01em' }}>{sec.title}</span>
                         </div>
 
@@ -932,7 +1008,7 @@ export function RewardPanel() {
                     ))}
 
                     {/* Formula reference box */}
-                    <div style={{ marginBottom: 28, padding: '14px 16px', borderRadius: 7, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ marginBottom: 28, padding: '14px 16px', borderRadius: 7, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Key Formulas</div>
                       {[
                         { name: 'PPO Reward', formula: 'r_total = r_θ  −  λ · KL(π_RL ∥ π_ref)', note: 'Preference reward minus KL divergence penalty' },
@@ -956,23 +1032,24 @@ export function RewardPanel() {
                   </div>
                 </div>
               )
-            })()}
+            })()}</motion.div>)}
+            </AnimatePresence>
 
             {/* ── Footer totals ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, background: '#0d0d0f' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderTop: '1px solid var(--color-border)', flexShrink: 0, background: 'var(--color-surface)' }}>
               {AGENT_ORDER.map(id => {
                 const r = rewardTotals[id] || 0
                 return (
                   <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 52 }}>
                     <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: r >= 0 ? '#22c55e' : '#ef4444' }}>{r >= 0 ? '+' : ''}{r.toFixed(2)}</span>
-                    <span style={{ fontSize: 8, color: '#71717a', fontWeight: 600 }}>{agents[id as AgentId]?.name?.split(' ')[0] || id}</span>
+                    <span style={{ fontSize: 8, color: 'var(--color-text-faint)', fontWeight: 600 }}>{agents[id as AgentId]?.name?.split(' ')[0] || id}</span>
                   </div>
                 )
               })}
               <div style={{ flex: 1 }} />
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 800, color: globalReward >= 0 ? '#22c55e' : '#ef4444' }}>{globalReward >= 0 ? '+' : ''}{globalReward.toFixed(3)}</div>
-                <div style={{ fontSize: 8, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total Reward</div>
+                <div style={{ fontSize: 8, color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total Reward</div>
               </div>
             </div>
           </div>

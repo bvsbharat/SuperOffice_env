@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Trophy, Zap, Rocket, Cloud, Wind, Gem, Search, Brain, Moon, Sparkles, Bot, Settings, ChevronUp, ChevronDown } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 const MODELS: { id: string; name: string; badge: string; badgeColor: string }[] = [
   { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5',  badge: 'DEFAULT',  badgeColor: '#22c55e' },
   { id: 'us.anthropic.claude-sonnet-4-6[1m]',              name: 'Claude Sonnet 4.6', badge: 'BALANCED', badgeColor: '#6366f1' },
-  { id: 'us.anthropic.claude-opus-4-6-v1[1m]',             name: 'Claude Opus 4.6',   badge: 'APEX',     badgeColor: '#a855f7' },
+  { id: 'us.anthropic.claude-opus-4-6-v1',                  name: 'Claude Opus 4.6',   badge: 'APEX',     badgeColor: '#a855f7' },
   { id: 'mistral.ministral-3-14b-instruct',                 name: 'Ministral 3 14B',   badge: 'EU',       badgeColor: '#eab308' },
   { id: 'qwen.qwen3-next-80b-a3b',                          name: 'Qwen3 80B',         badge: 'NEW',      badgeColor: '#d97706' },
   { id: 'openai.gpt-oss-safeguard-120b',                    name: 'GPT OSS 120B',      badge: 'OPEN',     badgeColor: '#10b981' },
@@ -29,23 +32,23 @@ function shortModelName(modelId: string): string {
     .replace(/-instruct$/, '')
 }
 
-function providerIcon(modelId: string): string {
+function providerIcon(modelId: string): LucideIcon {
   const norm = normalizeId(modelId).toLowerCase()
   if (norm.includes('claude')) {
-    if (norm.includes('opus')) return '🏆'
-    if (norm.includes('sonnet')) return '⚡'
-    return '🚀'
+    if (norm.includes('opus')) return Trophy
+    if (norm.includes('sonnet')) return Zap
+    return Rocket
   }
-  if (norm.includes('nova')) return '☁️'
-  if (norm.includes('llama')) return '🦙'
-  if (norm.includes('mistral') || norm.includes('ministral')) return '🌬️'
-  if (norm.includes('gemma')) return '💎'
-  if (norm.includes('deepseek')) return '🔍'
-  if (norm.includes('qwen')) return '🧠'
-  if (norm.includes('kimi') || norm.includes('moonshot')) return '🌙'
-  if (norm.includes('minimax')) return '🔮'
-  if (norm.includes('gpt') || norm.includes('openai')) return '🤖'
-  return '⚙️'
+  if (norm.includes('nova')) return Cloud
+  if (norm.includes('llama')) return Rocket
+  if (norm.includes('mistral') || norm.includes('ministral')) return Wind
+  if (norm.includes('gemma')) return Gem
+  if (norm.includes('deepseek')) return Search
+  if (norm.includes('qwen')) return Brain
+  if (norm.includes('kimi') || norm.includes('moonshot')) return Moon
+  if (norm.includes('minimax')) return Sparkles
+  if (norm.includes('gpt') || norm.includes('openai')) return Bot
+  return Settings
 }
 
 export function ModelSelector() {
@@ -104,8 +107,14 @@ export function ModelSelector() {
     } catch { /* best-effort */ }
   }
 
-  const dropdown = open && rect ? createPortal(
-    <div
+  const dropdown = rect ? createPortal(
+    <AnimatePresence>
+      {open && (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: 8 }}
+      transition={{ duration: 0.15, ease: 'easeOut' }}
       onMouseDown={e => e.stopPropagation()}
       style={{
         position: 'fixed',
@@ -154,7 +163,7 @@ export function ModelSelector() {
               textAlign: 'left',
             }}
           >
-            <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{providerIcon(m.id)}</span>
+            <span style={{ flexShrink: 0, color: isActive ? '#6366f1' : 'var(--color-text-secondary)' }}>{(() => { const Icon = providerIcon(m.id); return <Icon size={14} /> })()}</span>
             <span style={{
               fontSize: 11,
               fontWeight: 600,
@@ -180,9 +189,14 @@ export function ModelSelector() {
           </button>
         )
       })}
-    </div>,
+    </motion.div>
+      )}
+    </AnimatePresence>,
     document.body
   ) : null
+
+  const currentKnown = MODELS.find(m => normalizeId(m.id) === normalizeId(currentModel))
+  const CurrentIcon = providerIcon(currentModel)
 
   return (
     <>
@@ -193,22 +207,31 @@ export function ModelSelector() {
           position: 'relative',
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '2px 8px',
-          height: 26,
-          minWidth: 148,
-          borderRadius: 4,
+          gap: 8,
+          padding: '2px 10px',
+          height: 32,
+          flex: 1,
+          minWidth: 0,
+          borderRadius: 5,
           background: 'var(--color-card-bg)',
           border: open ? '1px solid #6366f1' : '1px solid var(--color-border)',
           cursor: 'pointer',
         }}
         title="Switch model (takes effect on next Reset)"
       >
-        <span style={{ fontSize: 14, lineHeight: 1 }}>{providerIcon(currentModel)}</span>
-        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+        <span style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }}><CurrentIcon size={16} /></span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {shortModelName(currentModel)}
         </span>
-        <span style={{ fontSize: 8, color: 'var(--color-text-faint)' }}>{open ? '▲' : '▼'}</span>
+        {currentKnown && (
+          <span style={{
+            fontSize: 8, padding: '1px 5px', borderRadius: 3, fontWeight: 700, flexShrink: 0,
+            background: `${currentKnown.badgeColor}22`, color: currentKnown.badgeColor,
+          }}>
+            {currentKnown.badge}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', color: 'var(--color-text-faint)', flexShrink: 0 }}>{open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</span>
         {modelChanged && (
           <span style={{
             position: 'absolute',

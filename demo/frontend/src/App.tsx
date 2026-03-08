@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Sun, Moon, BarChart3, Trophy, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useStore } from './store/useStore'
 import { OfficeMap } from './components/OfficeMap'
@@ -16,6 +17,7 @@ import { FourDView } from './components/fourd/FourDView'
 import { BenchmarkPanel } from './components/BenchmarkPanel'
 import type { AgentId } from './types'
 import { AGENT_ORDER, PHASE_COLORS } from './types'
+import type { PhaserBridge } from './game/OfficeScene'
 
 const PHASE_LABELS: Record<string, string> = {
   morning_standup: 'Standup',
@@ -46,6 +48,7 @@ export default function App() {
   const toggleBenchmarkPanel = useStore(s => s.toggleBenchmarkPanel)
 
   const [rightTab, setRightTab] = useState<'dashboard' | 'agents' | 'rewards'>('dashboard')
+  const [bridge, setBridge] = useState<PhaserBridge | null>(null)
 
   // Load initial state on mount
   useEffect(() => {
@@ -55,10 +58,18 @@ export default function App() {
       .catch(() => {})
   }, [applyFullState])
 
+  // Update camera insets when sidebars toggle
+  useEffect(() => {
+    if (!bridge) return
+    const left = panelVisibility.bottomPanel ? 340 : 0
+    const right = panelVisibility.rightSidebar ? 384 : 0
+    bridge.setViewInsets(left, right)
+  }, [bridge, panelVisibility.bottomPanel, panelVisibility.rightSidebar])
+
   return (
     <div className="h-screen flex flex-col overflow-hidden select-none" style={{ background: 'var(--color-surface)' }}>
       {/* Header */}
-      <header className="shrink-0 h-10 flex items-center px-4 gap-4" style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.4)', backdropFilter: 'blur(18px) saturate(160%)', WebkitBackdropFilter: 'blur(18px) saturate(160%)' }}>
+      <header className="shrink-0 h-10 flex items-center px-4 gap-4" style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
         <div className="flex items-center gap-2.5">
           {/* O2 Logo mark */}
           <div style={{
@@ -102,14 +113,16 @@ export default function App() {
         <ViewToggle />
 
         {/* Theme toggle */}
-        <button
+        <motion.button
           onClick={toggleTheme}
-          className="text-sm leading-none px-1.5 py-0.5 rounded transition-colors"
-          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-border)' }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="text-sm leading-none px-1.5 py-0.5 rounded transition-colors flex items-center justify-center"
+          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
         >
-          {theme === 'light' ? '\u263D' : '\u2600'}
-        </button>
+          {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
+        </motion.button>
 
         <div className="flex items-center gap-3 ml-2 text-[10px] font-mono" style={{ color: 'var(--color-text-faint)' }}>
           <span>Day <span style={{ color: 'var(--color-text-secondary)' }}>{day}/{maxDays}</span></span>
@@ -133,9 +146,28 @@ export default function App() {
             </>
           )}
 
+          {/* Reward Analysis button */}
+          <motion.button
+            onClick={() => togglePanel('rightSidebar')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded transition-colors"
+            style={{
+              background: panelVisibility.rightSidebar ? '#6366f118' : 'var(--color-card-bg)',
+              border: panelVisibility.rightSidebar ? '1px solid #6366f1' : '1px solid var(--color-border)',
+              color: panelVisibility.rightSidebar ? '#6366f1' : 'var(--color-text-secondary)',
+            }}
+            title="Reward Analysis"
+          >
+            <BarChart3 size={14} />
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Rewards</span>
+          </motion.button>
+
           {/* Leaderboard button */}
-          <button
+          <motion.button
             onClick={toggleBenchmarkPanel}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             className="relative flex items-center gap-1.5 px-2 py-1 rounded transition-colors"
             style={{
               background: 'var(--color-card-bg)',
@@ -144,7 +176,7 @@ export default function App() {
             }}
             title="Model Leaderboard"
           >
-            <span className="text-sm leading-none">🏆</span>
+            <Trophy size={14} />
             <span className="text-[9px] font-semibold uppercase tracking-wide">Leaderboard</span>
             {benchmarkRuns.length > 0 && (
               <span
@@ -154,7 +186,7 @@ export default function App() {
                 {benchmarkRuns.length}
               </span>
             )}
-          </button>
+          </motion.button>
         </div>
       </header>
 
@@ -172,40 +204,80 @@ export default function App() {
           <>
             {/* Office Map */}
             <div className="flex-1 min-h-0" style={{ background: 'var(--color-panel)' }}>
-              <OfficeMap />
+              <OfficeMap onBridgeReady={setBridge} />
             </div>
             {/* Controls Bar */}
-            <div className="shrink-0 h-12 flex" style={{ borderTop: '1px solid var(--color-border)', background: '#000000', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
+            <div className="shrink-0 h-12 flex" style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
               <div className="flex-1" style={{ borderRight: '1px solid var(--color-border)' }}>
                 <TimelineView />
               </div>
               <div className="flex-1">
                 <EpisodeControls />
               </div>
+              {/* Zoom Controls */}
+              {bridge && (
+                <div className="shrink-0 flex items-center gap-1.5 px-3" style={{ borderLeft: '1px solid var(--color-border)' }}>
+                  <span className="text-[9px] font-semibold" style={{ color: 'var(--color-text-faint)' }}>ZOOM</span>
+                  <motion.button
+                    onClick={() => bridge.zoomIn()}
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    className="w-7 h-7 flex items-center justify-center rounded"
+                    style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                    title="Zoom In"
+                  >
+                    <ZoomIn size={14} />
+                  </motion.button>
+                  <motion.button
+                    onClick={() => bridge.zoomOut()}
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    className="w-7 h-7 flex items-center justify-center rounded"
+                    style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                    title="Zoom Out"
+                  >
+                    <ZoomOut size={14} />
+                  </motion.button>
+                  <motion.button
+                    onClick={() => bridge.resetCamera()}
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    className="w-7 h-7 flex items-center justify-center rounded"
+                    style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                    title="Reset View"
+                  >
+                    <RotateCcw size={12} />
+                  </motion.button>
+                </div>
+              )}
             </div>
           </>
         )}
 
         {/* ── Left sidebar toggle ── */}
-        <button
+        <motion.button
           onClick={() => togglePanel('bottomPanel')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           className="absolute top-2 z-30 flex items-center justify-center"
           style={{
             left: panelVisibility.bottomPanel ? 340 : 0,
             width: 20,
             height: 36,
-            background: '#000000',
+            background: 'var(--color-panel)',
             border: '1px solid var(--color-border)',
             borderLeft: panelVisibility.bottomPanel ? 'none' : '1px solid var(--color-border)',
             borderRadius: '0 4px 4px 0',
             color: 'var(--color-text-faint)',
-            fontSize: 10,
             cursor: 'pointer',
             transition: 'left 0.3s ease-in-out',
           }}
         >
-          {panelVisibility.bottomPanel ? '\u2039' : '\u203A'}
-        </button>
+          {panelVisibility.bottomPanel ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+        </motion.button>
 
         {/* ── Left sidebar — Conversation Log ── */}
         <AnimatePresence initial={false}>
@@ -216,9 +288,9 @@ export default function App() {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
               className="absolute left-0 top-0 z-20 flex flex-col overflow-hidden"
-              style={{ bottom: 48, borderRight: '1px solid var(--color-border)', background: '#000000' }}
+              style={{ bottom: 48, borderRight: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
             >
-              <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: '#000000' }}>
+              <div className="shrink-0 flex items-center px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
                 <span className="text-[10px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>CONVERSATION LOG</span>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden">
@@ -229,25 +301,26 @@ export default function App() {
         </AnimatePresence>
 
         {/* ── Right sidebar toggle ── */}
-        <button
+        <motion.button
           onClick={() => togglePanel('rightSidebar')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           className="absolute top-2 z-30 flex items-center justify-center"
           style={{
             right: panelVisibility.rightSidebar ? 384 : 0,
             width: 20,
             height: 36,
-            background: '#000000',
+            background: 'var(--color-panel)',
             border: '1px solid var(--color-border)',
             borderRight: panelVisibility.rightSidebar ? 'none' : '1px solid var(--color-border)',
             borderRadius: '4px 0 0 4px',
             color: 'var(--color-text-faint)',
-            fontSize: 10,
             cursor: 'pointer',
             transition: 'right 0.3s ease-in-out',
           }}
         >
-          {panelVisibility.rightSidebar ? '\u203A' : '\u2039'}
-        </button>
+          {panelVisibility.rightSidebar ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        </motion.button>
 
         {/* ── Right sidebar — Dashboard / Agents / Rewards ── */}
         <AnimatePresence initial={false}>
@@ -258,20 +331,27 @@ export default function App() {
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
               className="absolute right-0 top-0 z-20 flex flex-col overflow-hidden"
-              style={{ bottom: 48, borderLeft: '1px solid var(--color-border)', background: '#000000' }}
+              style={{ bottom: 48, borderLeft: '1px solid var(--color-border)', background: 'var(--color-panel)' }}
             >
-              <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)', background: '#000000' }}>
-                {(['dashboard', 'agents', 'rewards'] as const).map(tab => (
+              <div className="flex shrink-0 relative" style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-panel)' }}>
+                {([['dashboard', 'DASHBOARD'], ['agents', 'AGENTS'], ['rewards', 'REWARD ANALYSIS']] as const).map(([tab, label]) => (
                   <button
                     key={tab}
                     onClick={() => setRightTab(tab)}
-                    className="text-[10px] px-4 py-2 font-semibold transition-colors"
+                    className="text-[10px] px-4 py-2 font-semibold transition-colors relative"
                     style={{
-                      color: rightTab === tab ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
-                      borderBottom: rightTab === tab ? '2px solid #6366f1' : '2px solid transparent',
+                      color: rightTab === tab ? '#ffffff' : 'var(--color-text-muted)',
                     }}
                   >
-                    {tab.toUpperCase()}
+                    {label}
+                    {rightTab === tab && (
+                      <motion.div
+                        layoutId="rightTabIndicator"
+                        className="absolute bottom-0 left-0 right-0"
+                        style={{ height: 2, background: '#ffffff' }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                      />
+                    )}
                   </button>
                 ))}
               </div>

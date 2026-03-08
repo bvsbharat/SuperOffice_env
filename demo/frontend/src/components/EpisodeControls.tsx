@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
+import { Play, Pause, SkipForward, RotateCcw } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { ModelSelector } from './ModelSelector'
 import type { Speed } from '../types'
@@ -91,34 +93,46 @@ export function EpisodeControls() {
       <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
 
       {/* Play / Pause */}
-      <button
+      <motion.button
         onClick={() => setIsRunning(!isRunning)}
         disabled={!canStep}
-        className={`text-lg leading-none transition-opacity ${!canStep ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110'}`}
+        whileHover={canStep ? { scale: 1.15 } : undefined}
+        whileTap={canStep ? { scale: 0.9 } : undefined}
+        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+        className={`text-lg leading-none transition-opacity ${!canStep ? 'opacity-30 cursor-not-allowed' : ''}`}
+        style={{ color: 'var(--color-text-primary)' }}
         title={isRunning ? 'Pause' : 'Play'}
       >
-        {isRunning ? '\u23F8' : '\u25B6\uFE0F'}
-      </button>
+        {isRunning ? <Pause size={18} /> : <Play size={18} />}
+      </motion.button>
 
       {/* Step */}
-      <button
+      <motion.button
         onClick={apiStep}
         disabled={!canStep || isRunning}
-        className={`text-lg leading-none transition-opacity ${(!canStep || isRunning) ? 'opacity-30 cursor-not-allowed' : 'hover:scale-110'}`}
+        whileHover={canStep && !isRunning ? { scale: 1.15 } : undefined}
+        whileTap={canStep && !isRunning ? { scale: 0.9 } : undefined}
+        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+        className={`text-lg leading-none transition-opacity ${(!canStep || isRunning) ? 'opacity-30 cursor-not-allowed' : ''}`}
+        style={{ color: 'var(--color-text-primary)' }}
         title="Step"
       >
-        {'\u23ED'}
-      </button>
+        <SkipForward size={18} />
+      </motion.button>
 
       {/* Reset */}
-      <button
+      <motion.button
         onClick={apiReset}
         disabled={isLoading}
-        className={`text-lg leading-none transition-opacity ${isLoading ? 'opacity-30' : 'hover:scale-110'}`}
+        whileHover={!isLoading ? { scale: 1.15 } : undefined}
+        whileTap={!isLoading ? { scale: 0.9 } : undefined}
+        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+        className={`text-lg leading-none transition-opacity ${isLoading ? 'opacity-30' : ''}`}
+        style={{ color: 'var(--color-text-primary)' }}
         title="Reset"
       >
-        {'\uD83D\uDD04'}
-      </button>
+        <RotateCcw size={18} />
+      </motion.button>
 
       <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
 

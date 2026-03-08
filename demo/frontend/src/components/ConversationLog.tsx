@@ -54,31 +54,53 @@ export function ConversationLog() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-panel)' }}>
-      {/* Filter row */}
-      <div className="flex items-center gap-1 px-2 py-1.5 overflow-x-auto shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      {/* Filter row — agent icons + labels */}
+      <div className="flex items-center gap-1.5 px-2 py-2 overflow-x-auto shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <button
           onClick={() => setFilter('all')}
-          className="text-[9px] px-2 py-0.5 rounded-full border transition-colors shrink-0"
-          style={filter === 'all'
-            ? { borderColor: 'var(--color-text-faint)', color: 'var(--color-text-secondary)', background: 'var(--color-border)' }
-            : { borderColor: 'var(--color-border)', color: 'var(--color-text-faint)' }
-          }
+          className="flex flex-col items-center gap-0.5 transition-colors shrink-0"
+          style={{ minWidth: 32 }}
         >
-          ALL
-        </button>
-        {AGENT_ORDER.map(aid => (
-          <button
-            key={aid}
-            onClick={() => setFilter(filter === aid ? 'all' : aid as AgentId)}
-            className="text-[9px] px-1.5 py-0.5 rounded-full border transition-colors shrink-0"
-            style={filter === aid
-              ? { background: AGENT_COLORS[aid], borderColor: AGENT_COLORS[aid], color: '#ffffff', fontWeight: 700 }
-              : { borderColor: 'var(--color-border)', color: 'var(--color-text-faint)' }
-            }
+          <div
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+            style={{
+              background: filter === 'all' ? '#6366f1' : 'var(--color-card-bg)',
+              border: filter === 'all' ? '2px solid #6366f1' : '2px solid var(--color-border)',
+              color: filter === 'all' ? '#fff' : 'var(--color-text-muted)',
+            }}
           >
-            {aid.slice(0, 3).toUpperCase()}
-          </button>
-        ))}
+            *
+          </div>
+          <span className="text-[8px] font-semibold" style={{ color: filter === 'all' ? '#ffffff' : 'var(--color-text-faint)' }}>ALL</span>
+        </button>
+        {AGENT_ORDER.map(aid => {
+          const isActive = filter === aid
+          const color = AGENT_COLORS[aid] ?? '#64748b'
+          return (
+            <button
+              key={aid}
+              onClick={() => setFilter(isActive ? 'all' : aid as AgentId)}
+              className="flex flex-col items-center gap-0.5 transition-all shrink-0"
+              style={{ minWidth: 32, opacity: filter !== 'all' && !isActive ? 0.45 : 1 }}
+            >
+              <img
+                src={agentIconPath(aid as AgentId)}
+                alt={aid}
+                className="w-6 h-6 rounded-full object-cover"
+                style={{
+                  outline: isActive ? `2px solid ${color}` : '2px solid transparent',
+                  outlineOffset: 1,
+                }}
+              />
+              <span
+                className="text-[8px] font-semibold"
+                style={{ color: isActive ? color : 'var(--color-text-faint)' }}
+              >
+                {aid.slice(0, 3).toUpperCase()}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Messages */}
