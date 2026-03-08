@@ -49,7 +49,7 @@ for role in ALL_ROLES:
     _train_steps[role] = 0
 
 
-def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6) -> dict:
+def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5) -> dict:
     """Train with TRL GRPO using Unsloth. Saves LoRA and hot-loads into vLLM."""
     global _global_step
     import torch
@@ -83,8 +83,10 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6)
 
         # Build dataset from trajectories
         # Each trajectory has: system_prompt, user_message, assistant_response, reward
+        from market.config import ROLE_ACTIONS
+        valid_actions = ROLE_ACTIONS.get(role, [])
+
         rows = []
-        rewards_list = []
         for t in trajectories_data:
             rows.append({
                 "prompt": [
@@ -94,14 +96,45 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6)
                 "expected_action": json.dumps(t["assistant_response"]),
                 "trajectory_reward": t["reward"],
             })
-            rewards_list.append(t["reward"])
 
         dataset = Dataset.from_list(rows)
 
-        # Reward function based on trajectory outcomes
-        def trajectory_reward_fn(completions, trajectory_reward, **kwargs) -> list[float]:
-            """Use the pre-computed reward from the simulation."""
-            return [float(r) for r in trajectory_reward]
+        # Reward function that scores EACH generated completion independently.
+        # GRPO needs reward variance within a group to produce gradients.
+        def score_completion(completions, **kwargs) -> list[float]:
+            """Score each completion based on format quality and action validity."""
+            rewards = []
+            for completion in completions:
+                text = completion[0]["content"] if isinstance(completion, list) else str(completion)
+                score = 0.0
+
+                # 1. Valid JSON? (+0.3)
+                parsed = None
+                try:
+                    start = text.find("{")
+                    end = text.rfind("}") + 1
+                    if start >= 0 and end > start:
+                        parsed = json.loads(text[start:end])
+                        score += 0.3
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+                if parsed and isinstance(parsed, dict):
+                    # 2. Has action_type field? (+0.2)
+                    if "action_type" in parsed:
+                        score += 0.2
+                        # 3. Valid action_type for this role? (+0.3)
+                        if parsed["action_type"] in valid_actions:
+                            score += 0.3
+                    # 4. Has reasoning? (+0.1)
+                    if parsed.get("reasoning"):
+                        score += 0.1
+                    # 5. Has target? (+0.1)
+                    if parsed.get("target"):
+                        score += 0.1
+
+                rewards.append(score)
+            return rewards
 
         # GRPO config — no vLLM integration (avoids known bugs)
         output_dir = os.path.join(_lora_output_dir, role)
@@ -110,14 +143,15 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6)
         training_args = GRPOConfig(
             output_dir=output_dir,
             use_vllm=False,
-            num_generations=4,
+            num_generations=8,           # More completions = more reward variance
             max_prompt_length=512,
             max_completion_length=256,
-            temperature=0.7,
+            temperature=0.9,             # Higher temp = more diverse completions
             learning_rate=learning_rate,
             per_device_train_batch_size=1,
             gradient_accumulation_steps=4,
-            max_steps=min(50, len(rows)),  # Quick training for hackathon
+            num_train_epochs=3,          # Multiple passes over small dataset
+            max_steps=min(50, len(rows) * 3),
             bf16=True,
             optim="adamw_8bit",
             logging_steps=1,
@@ -129,7 +163,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6)
             model=model,
             args=training_args,
             train_dataset=dataset,
-            reward_funcs=[trajectory_reward_fn],
+            reward_funcs=[score_completion],
             tokenizer=tokenizer,
         )
 
