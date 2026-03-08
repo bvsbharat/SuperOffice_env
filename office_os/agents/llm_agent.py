@@ -1,8 +1,8 @@
-"""LLM-powered agent using ART-trained models or Claude for structured decisions.
+"""LLM-powered agent using vLLM-served models or Claude for structured decisions.
 
 Modes:
-  1. ART model (OpenAI-compatible endpoint on Northflank GPU) — primary, uses function calling
-  2. Claude (Anthropic API / AWS Bedrock) — alternative mode, uses tool_use
+  1. vLLM model (Qwen + LoRA on Northflank GPU) — primary, uses JSON prompting
+  2. Claude (Anthropic API) — alternative mode
 """
 
 from __future__ import annotations
@@ -37,35 +37,20 @@ class ReflectionOutput(BaseModel):
 
 
 def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
-    """Lazy-load the appropriate Anthropic client."""
+    """Lazy-load the Anthropic client."""
     try:
         import anthropic
     except ImportError:
         raise ImportError("anthropic is required. Install with: pip install anthropic")
-
-    if provider == "bedrock":
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        session_token = os.environ.get("AWS_SESSION_TOKEN")
-
-        kwargs = {"aws_region": aws_region}
-        if access_key:
-            kwargs["aws_access_key"] = access_key
-        if secret_key:
-            kwargs["aws_secret_key"] = secret_key
-        if session_token:
-            kwargs["aws_session_token"] = session_token
-
-        return anthropic.AnthropicBedrock(**kwargs)
     return anthropic.Anthropic()
 
 
 def _get_openai_client(base_url: str, api_key: str):
-    """Create an OpenAI-compatible client for ART-trained models."""
+    """Create an OpenAI-compatible client for vLLM."""
     try:
         from openai import OpenAI
     except ImportError:
-        raise ImportError("openai is required for ART models. Install with: pip install openai")
+        raise ImportError("openai is required for vLLM models. Install with: pip install openai")
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
@@ -73,11 +58,11 @@ def _get_openai_client(base_url: str, api_key: str):
 
 class LLMAgent:
     """
-    Agent that uses ART-trained models or Claude for decisions.
+    Agent that uses vLLM-served models or Claude for decisions.
 
     Two separate modes (set at init, no automatic switching):
-      - ART model (OpenAI-compatible on Northflank GPU): set via set_art_endpoint()
-      - Claude (Anthropic/Bedrock): default if no ART endpoint set
+      - vLLM (Northflank GPU): set via set_vllm_endpoint()
+      - Claude (Anthropic): default if no vLLM endpoint set
     """
 
     def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
@@ -91,9 +76,9 @@ class LLMAgent:
         self._client = None
         self._openai_client = None
 
-        # ART model endpoint (set by ARTTrainer after training)
-        self._art_endpoint: dict | None = None  # {base_url, api_key, model_name}
-        self.use_art_model = False
+        # vLLM endpoint config
+        self._vllm_endpoint: dict | None = None  # {base_url, api_key, model_name}
+        self.use_vllm = False
 
         # Import role actions for validation
         from market.config import ROLE_ACTIONS
@@ -102,22 +87,22 @@ class LLMAgent:
         # Track last user message for trajectory collection
         self.last_user_message: str = ""
 
-    def set_art_endpoint(self, base_url: str, api_key: str, model_name: str):
-        """Configure the ART-trained model endpoint (e.g. Northflank GPU vLLM)."""
-        self._art_endpoint = {
+    def set_vllm_endpoint(self, base_url: str, api_key: str, model_name: str):
+        """Configure the vLLM endpoint (e.g. Northflank GPU)."""
+        self._vllm_endpoint = {
             "base_url": base_url,
             "api_key": api_key,
             "model_name": model_name,
         }
         self._openai_client = None
-        self.use_art_model = True
-        logger.info(f"{self.role}: Using ART model at {base_url} ({model_name})")
+        self.use_vllm = True
+        logger.info(f"{self.role}: Using vLLM at {base_url} ({model_name})")
 
-    def clear_art_endpoint(self):
+    def clear_vllm_endpoint(self):
         """Revert to Claude for inference."""
-        self._art_endpoint = None
+        self._vllm_endpoint = None
         self._openai_client = None
-        self.use_art_model = False
+        self.use_vllm = False
 
     @property
     def client(self):
@@ -127,10 +112,10 @@ class LLMAgent:
 
     @property
     def openai_client(self):
-        if self._openai_client is None and self._art_endpoint:
+        if self._openai_client is None and self._vllm_endpoint:
             self._openai_client = _get_openai_client(
-                self._art_endpoint["base_url"],
-                self._art_endpoint["api_key"],
+                self._vllm_endpoint["base_url"],
+                self._vllm_endpoint["api_key"],
             )
         return self._openai_client
 
@@ -142,9 +127,8 @@ class LLMAgent:
         user_msg = self._build_user_message(observation, turn)
         self.last_user_message = user_msg
 
-        # Use whichever mode is active — no fallback between them
-        call_fn = self._call_art_model if self.use_art_model else self._call_structured
-        mode = "ART" if self.use_art_model else "Claude"
+        call_fn = self._call_vllm if self.use_vllm else self._call_structured
+        mode = "vLLM" if self.use_vllm else "Claude"
 
         action = None
         for attempt in range(5):
@@ -170,8 +154,8 @@ class LLMAgent:
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
         return result
 
-    def _call_art_model(self, user_msg: str) -> AgentAction:
-        """Call ART-trained model via OpenAI-compatible endpoint (e.g. vLLM on Northflank).
+    def _call_vllm(self, user_msg: str) -> AgentAction:
+        """Call vLLM model via OpenAI-compatible endpoint.
 
         Uses plain JSON prompting (no tools/function-calling) for maximum
         compatibility with vLLM + Qwen models.
@@ -185,7 +169,7 @@ class LLMAgent:
         )
 
         response = self.openai_client.chat.completions.create(
-            model=self._art_endpoint["model_name"],
+            model=self._vllm_endpoint["model_name"],
             max_tokens=512,
             temperature=0.7,
             messages=[
@@ -254,10 +238,10 @@ class LLMAgent:
 
         memory_text = "\n".join(f"- {m['description']}" for m in memories[:10])
 
-        if self.use_art_model and self._art_endpoint:
+        if self.use_vllm and self._vllm_endpoint:
             try:
                 response = self.openai_client.chat.completions.create(
-                    model=self._art_endpoint["model_name"],
+                    model=self._vllm_endpoint["model_name"],
                     max_tokens=256,
                     messages=[
                         {"role": "system", "content": "You are a startup agent reflecting on recent events."},
@@ -273,7 +257,7 @@ class LLMAgent:
                     self.base.reflect(turn, result.insights)
                 return
             except Exception as e:
-                logger.debug(f"ART reflection failed for {self.role}: {e}")
+                logger.debug(f"vLLM reflection failed for {self.role}: {e}")
                 return
 
         try:

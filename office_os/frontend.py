@@ -6,14 +6,7 @@ A rich-based live terminal UI that visualizes the multi-agent simulation
 in real-time. Shows KPIs, customer pipeline, agent actions, and messages.
 
 Usage:
-    # Run with Bedrock (auto-detected from .env):
-    python frontend.py --days 10
-
-    # Run with Anthropic API:
-    python frontend.py --days 10 --model claude-haiku-4-5-20251001
-
-    # Run with explicit Bedrock:
-    python frontend.py --days 10 --bedrock --aws-region us-east-1
+    python frontend.py --days 10 --speed 0.3
 """
 
 import argparse
@@ -288,64 +281,52 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
     return layout
 
 
-def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
-                  provider: str = "anthropic", aws_region: str = "us-east-1",
-                  speed: float = 0.5, art_train: bool = False,
-                  art_only: bool = False, art_model: str = "Qwen/Qwen2.5-3B-Instruct",
-                  art_base_model: str = "Qwen/Qwen2.5-3B-Instruct",
-                  art_train_every: int = 3,
-                  art_backend: str = "serverless",
-                  northflank_endpoint: str = "",
-                  northflank_api_key: str = ""):
-    """Run the simulation with a live terminal dashboard and optional ART training."""
+def run_dashboard(days: int = 90, model_name: str = "Qwen/Qwen2.5-3B-Instruct",
+                  speed: float = 0.5, train_every: int = 3,
+                  northflank_endpoint: str = ""):
+    """Run the simulation with a live terminal dashboard and remote training."""
     env = OfficeOsEnvironment()
     obs = env.reset()
 
-    logger.info(f"Creating agents: model={model}, provider={provider}, region={aws_region}")
-    agents = {role: LLMAgent(role=role, model=model, provider=provider, aws_region=aws_region)
-              for role in AGENT_ROLES}
+    agents = {role: LLMAgent(role=role) for role in AGENT_ROLES}
 
-    # ART-only mode: point all agents at the Northflank vLLM endpoint from the start
-    if art_only and northflank_endpoint:
+    # Point all agents at the Northflank vLLM endpoint
+    if northflank_endpoint:
         vllm_base_url = northflank_endpoint.rstrip("/") + "/v1"
         for role, agent in agents.items():
-            agent.set_art_endpoint(
+            agent.set_vllm_endpoint(
                 base_url=vllm_base_url,
-                api_key=northflank_api_key or "dummy",
-                model_name=art_model,
+                api_key="dummy",
+                model_name=model_name,
             )
-        logger.info(f"ART-only mode: all agents using {vllm_base_url} with model {art_model}")
+        logger.info(f"All agents using vLLM at {vllm_base_url} with model {model_name}")
 
     action_log = []
     message_log = []
     reward_totals = {role: 0.0 for role in AGENT_ROLES}
 
-    # ART training setup
+    # Training setup
     from training.collector import TrajectoryCollector
-    from training.trainer import ARTTrainer
+    from training.trainer import RemoteTrainer
 
     collector = TrajectoryCollector()
-    trainer = ARTTrainer(
+    trainer = RemoteTrainer(
         collector=collector,
-        base_model=art_base_model,
-        train_every_days=art_train_every,
-        backend_type=art_backend if art_train else "disabled",
+        base_model=model_name,
+        train_every_days=train_every,
         northflank_endpoint=northflank_endpoint,
-        northflank_api_key=northflank_api_key,
     )
 
     # Activity log file
     activity_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "activity.log")
     activity_file = open(activity_log_path, "w")
     activity_file.write(f"=== Office OS Simulation Log ===\n")
-    activity_file.write(f"Model: {model} | Provider: {provider} | Days: {days}\n")
-    if art_train:
-        activity_file.write(f"ART Training: ON | Base: {art_base_model} | Every {art_train_every} days\n")
+    activity_file.write(f"Model: {model_name} | Days: {days}\n")
+    activity_file.write(f"Training every {train_every} days via Northflank\n")
     activity_file.write("\n")
 
     turn = 0
     role_index = 0
-    last_train_day = 0
 
     try:
         with Live(build_layout(env._market, turn, action_log, message_log, reward_totals),
@@ -392,7 +373,7 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                     "detail": result.get("detail", ""),
                 })
 
-                # Collect trajectory for ART training
+                # Collect trajectory for training
                 collector.record(
                     role=role,
                     system_prompt=agent.system_prompt,
@@ -405,9 +386,8 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                 )
 
                 # Write to activity log file
-                art_tag = " [ART]" if agent.use_art_model else ""
                 activity_file.write(
-                    f"[Day {obs.day} T{turn}] {ROLE_NAMES[role]}{art_tag} {success_str} "
+                    f"[Day {obs.day} T{turn}] {ROLE_NAMES[role]} {success_str} "
                     f"{action_dict['action_type']} -> {action_dict.get('target', '')}\n"
                     f"  Detail: {result.get('detail', '')}\n"
                     f"  Reasoning: {action_dict.get('reasoning', '')}\n"
@@ -427,11 +407,11 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                 # Track rewards
                 reward_totals[role] += obs.reward
 
-                # ART Training trigger: every N simulation days
+                # Training trigger: every N simulation days
                 current_day = obs.day
-                if art_train and trainer.should_train(current_day):
+                if trainer.should_train(current_day):
                     activity_file.write(f"\n{'='*40}\n")
-                    activity_file.write(f"ART TRAINING TRIGGERED (Day {current_day})\n")
+                    activity_file.write(f"TRAINING TRIGGERED (Day {current_day})\n")
                     activity_file.write(f"Pending trajectories: {collector.pending_count()}\n")
 
                     import asyncio
@@ -440,26 +420,25 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
                     for tr in train_results:
                         activity_file.write(f"  {tr['role']}: {tr['status']}")
                         if tr['status'] == 'trained':
-                            activity_file.write(f" (step={tr.get('step', '?')}, trajs={tr.get('trajectories', tr.get('trajectories_used', '?'))})")
+                            activity_file.write(f" (step={tr.get('step', '?')}, trajs={tr.get('trajectories_used', '?')})")
                         elif tr.get('reason'):
                             activity_file.write(f" ({tr['reason']})")
                         activity_file.write("\n")
 
-                    # Switch agents to ART-trained models
+                    # Switch agents to trained LoRA models
                     for tr in train_results:
                         if tr['status'] == 'trained':
                             endpoint = trainer.get_inference_endpoint(tr['role'])
                             if endpoint:
-                                agents[tr['role']].set_art_endpoint(
-                                    base_url=endpoint['base_url'],
-                                    api_key=endpoint['api_key'],
+                                agents[tr['role']].set_vllm_endpoint(
+                                    base_url=endpoint['base_url'].rstrip("/") + "/v1",
+                                    api_key="dummy",
                                     model_name=endpoint['model_name'],
                                 )
-                                activity_file.write(f"  >> {tr['role']} switched to ART model\n")
+                                activity_file.write(f"  >> {tr['role']} switched to LoRA model\n")
 
                     activity_file.write(f"{'='*40}\n\n")
                     activity_file.flush()
-                    last_train_day = current_day
 
                 # Periodic reflection
                 if turn % (10 * len(AGENT_ROLES)) == 0:
@@ -486,13 +465,12 @@ def run_dashboard(days: int = 90, model: str = "claude-sonnet-4-20250514",
         for role in AGENT_ROLES:
             activity_file.write(f"  {ROLE_NAMES[role]}: {reward_totals[role]:+.1f}\n")
 
-        # ART training summary
-        if art_train:
-            stats = trainer.get_training_stats()
-            activity_file.write(f"\nART Training Summary:\n")
-            activity_file.write(f"  Total trajectories collected: {stats['total_trajectories']}\n")
-            for r, info in stats['roles'].items():
-                activity_file.write(f"  {r}: step={info['train_step']}, turns={info['total_turns']}\n")
+        # Training summary
+        stats = trainer.get_training_stats()
+        activity_file.write(f"\nTraining Summary:\n")
+        activity_file.write(f"  Total trajectories collected: {stats['total_trajectories']}\n")
+        for r, info in stats['roles'].items():
+            activity_file.write(f"  {r}: step={info['train_step']}, turns={info['total_turns']}\n")
 
         activity_file.write(f"\nShared Memory ({len(env._market.shared_memory.entries)} entries):\n")
         for e in env._market.shared_memory.entries:
@@ -553,12 +531,12 @@ def build_final_summary(market, reward_totals, agents, turn):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Office OS Terminal Dashboard (ART-only)")
+    parser = argparse.ArgumentParser(description="Office OS Terminal Dashboard")
     parser.add_argument("--days", type=int, default=90, help="Days to simulate (default: 90)")
     parser.add_argument("--speed", type=float, default=0.5, help="Seconds between turns (default: 0.5)")
-    parser.add_argument("--art-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
-                        help="Model name on the vLLM endpoint (default: Qwen/Qwen2.5-3B-Instruct)")
-    parser.add_argument("--art-train-every", type=int, default=3,
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
+                        help="Model name on the vLLM endpoint")
+    parser.add_argument("--train-every", type=int, default=3,
                         help="Train every N simulation days (default: 3)")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank inference endpoint URL")
@@ -577,26 +555,18 @@ def main():
         console.print("[red]Northflank endpoint required. Set NORTHFLANK_INFERENCE_ENDPOINT in .env or use --northflank-endpoint[/]")
         sys.exit(1)
 
-    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.art_model} | Days: {args.days}")
+    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.model} | Days: {args.days}")
     console.print(f"[dim]Endpoint: {nf_endpoint}[/]")
-    console.print(f"[dim]Training every {args.art_train_every} days via {nf_train_endpoint or nf_endpoint}[/]")
+    console.print(f"[dim]Training every {args.train_every} days via {nf_train_endpoint or nf_endpoint}[/]")
     console.print("[dim]Starting simulation...[/]\n")
     time.sleep(1)
 
     run_dashboard(
         days=args.days,
-        model=args.art_model,
-        provider="art",
-        aws_region="us-east-1",
+        model_name=args.model,
         speed=args.speed,
-        art_train=True,
-        art_only=True,
-        art_model=args.art_model,
-        art_base_model=args.art_model,
-        art_train_every=args.art_train_every,
-        art_backend="remote",
+        train_every=args.train_every,
         northflank_endpoint=nf_endpoint,
-        northflank_api_key="",
     )
 
 

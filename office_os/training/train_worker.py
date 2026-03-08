@@ -1,7 +1,7 @@
 """
 TRL GRPO Training Worker for Office OS on Northflank H100.
 
-Replaces ART with direct TRL + Unsloth for training.
+Uses TRL + Unsloth for GRPO training with custom reward functions.
 vLLM runs separately on port 8080 for inference.
 
 Architecture:
@@ -44,7 +44,8 @@ _lora_output_dir = "/tmp/office_os_lora"
 _hf_repo = ""       # e.g. "username/office-os-loras"
 _wandb_project = "" # e.g. "office-os"
 
-ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
+ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr"]
+SKIP_TRAINING = {"customer"}  # Customer role uses base model, no LoRA needed
 
 # Initialize step counters
 for role in ALL_ROLES:
@@ -312,6 +313,10 @@ class Handler(BaseHTTPRequestHandler):
             role = data.get("role", "")
             if not role:
                 self._json(400, {"error": "Missing 'role'"})
+                return
+
+            if role in SKIP_TRAINING:
+                self._json(200, {"status": "skipped", "role": role, "reason": "no training needed"})
                 return
 
             logger.info(f"Training request for {role}: {len(data.get('trajectories', []))} trajectories")
