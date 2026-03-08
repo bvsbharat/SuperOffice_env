@@ -4,8 +4,12 @@ ART Training + Inference Worker for Office OS on Northflank H100.
 Uses OpenPipe ART LocalBackend which manages its own internal vLLM.
 One process handles everything: inference AND training.
 
-After training, LoRA adapters are automatically loaded — no restart needed.
-Each of the 7 agent roles gets its own LoRA adapter.
+Architecture:
+  - ONE shared TrainableModel (each register() loads ~10GB, can't fit 7)
+  - All 7 roles train through the same model sequentially
+  - Role differentiation comes from system prompts in the trajectories
+  - Single LoRA adapter gets updated after each training step
+  - vLLM automatically loads the updated LoRA — no restart needed
 
 Usage:
     python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-3B-Instruct
@@ -30,9 +34,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(__name__)
 
 _backend = None
-_models: dict[str, Any] = {}  # role -> art.TrainableModel (7 separate LoRAs)
+_shared_model = None  # Single shared TrainableModel for all roles
 _base_model = "Qwen/Qwen2.5-3B-Instruct"
-_train_steps: dict[str, int] = {}
+_train_steps: dict[str, int] = {}  # Per-role training step counts
+_global_step: int = 0  # Global training step across all roles
 _inference_url: str = ""
 _lock = threading.Lock()
 
@@ -54,61 +59,46 @@ def _init_backend():
         return False
 
 
-async def _register_model(role: str, base_model: str | None = None):
-    """Register a trainable model for a role. ART starts vLLM on first register."""
-    global _inference_url
-    if role in _models:
-        return _models[role]
+async def _init_shared_model():
+    """Register ONE shared model on startup. All roles train through this model."""
+    global _shared_model, _inference_url
 
-    import art
-    model = art.TrainableModel(
-        name=f"office-os-{role}-{datetime.now().strftime('%Y%m%d')}",
-        project="office-os",
-        base_model=base_model or _base_model,
-    )
-    await model.register(_backend)
-    _models[role] = model
-    _train_steps[role] = 0
-
-    # Capture ART's internal vLLM URL
-    if hasattr(model, 'inference_base_url') and model.inference_base_url:
-        _inference_url = model.inference_base_url
-        logger.info(f"ART vLLM inference URL: {_inference_url}")
-
-    logger.info(f"Registered LoRA for {role}: {model.name} ({len(_models)}/7)")
-    return model
-
-
-async def _init_all_models():
-    """Register all 7 role models on startup — each gets its own LoRA adapter."""
     if not _init_backend():
         return
 
-    for role in ALL_ROLES:
-        try:
-            await _register_model(role, _base_model)
-        except Exception as e:
-            logger.error(f"Failed to register model for {role}: {e}")
+    import art
+    _shared_model = art.TrainableModel(
+        name=f"office-os-shared-{datetime.now().strftime('%Y%m%d')}",
+        project="office-os",
+        base_model=_base_model,
+    )
+    await _shared_model.register(_backend)
 
-    logger.info(f"Registered {len(_models)}/7 role models. Each has its own LoRA adapter.")
+    # Capture ART's internal vLLM URL
+    if hasattr(_shared_model, 'inference_base_url') and _shared_model.inference_base_url:
+        _inference_url = _shared_model.inference_base_url
+        logger.info(f"ART vLLM inference URL: {_inference_url}")
+
+    # Initialize step counters for all roles
+    for role in ALL_ROLES:
+        _train_steps[role] = 0
+
+    logger.info(f"Shared model registered: {_shared_model.name}")
+    logger.info("All 7 roles train through this single model (differentiated by system prompts)")
 
 
 async def _train_role(role: str, base_model: str, learning_rate: float, trajectories_data: list) -> dict:
-    """Train a single role with GRPO via ART. LoRA auto-loaded into vLLM."""
+    """Train a single role's data through the shared model. LoRA auto-loaded into vLLM."""
+    global _global_step
+
     if _backend is None:
         if not _init_backend():
             return {"status": "error", "role": role, "error": "Backend not available"}
 
+    if _shared_model is None:
+        return {"status": "error", "role": role, "error": "Shared model not initialized"}
+
     import art
-
-    # Register on-demand if not registered at startup
-    if role not in _models:
-        try:
-            await _register_model(role, base_model)
-        except Exception as e:
-            return {"status": "error", "role": role, "error": f"Failed to register: {e}"}
-
-    model = _models[role]
 
     trajectories = []
     for t in trajectories_data:
@@ -136,18 +126,21 @@ async def _train_role(role: str, base_model: str, learning_rate: float, trajecto
 
     try:
         groups = [art.TrajectoryGroup(trajectories)]
-        result = await _backend.train(model, groups, learning_rate=learning_rate)
-        await model.log(groups, metrics=result.metrics, step=result.step, split="train")
-        _train_steps[role] = result.step
+        result = await _backend.train(_shared_model, groups, learning_rate=learning_rate)
+        await _shared_model.log(groups, metrics=result.metrics, step=result.step, split="train")
+
+        _global_step = result.step
+        _train_steps[role] = _train_steps.get(role, 0) + 1
 
         # Get updated model name (includes LoRA) for inference
-        inference_name = model.get_inference_name()
+        inference_name = _shared_model.get_inference_name()
 
-        logger.info(f"Trained {role}: step={result.step}, trajs={len(trajectories)}, model={inference_name}")
+        logger.info(f"Trained {role}: global_step={result.step}, role_step={_train_steps[role]}, trajs={len(trajectories)}, model={inference_name}")
         return {
             "status": "trained",
             "role": role,
             "step": result.step,
+            "role_step": _train_steps[role],
             "trajectories_used": len(trajectories),
             "model_name": inference_name,
             "inference_url": _inference_url,
@@ -166,14 +159,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {
                 "status": "ok",
                 "backend_ready": _backend is not None,
+                "model_ready": _shared_model is not None,
                 "inference_url": _inference_url,
-                "models_registered": list(_models.keys()),
+                "global_step": _global_step,
                 "train_steps": _train_steps,
                 "base_model": _base_model,
             })
         elif self.path == "/models":
             self._json(200, {
-                "models": {r: {"step": s} for r, s in _train_steps.items()},
+                "shared_model": _shared_model.name if _shared_model else None,
+                "train_steps": _train_steps,
+                "global_step": _global_step,
                 "base_model": _base_model,
                 "inference_url": _inference_url,
             })
@@ -262,18 +258,18 @@ def main():
 
     logger.info(f"ART Worker on {args.host}:{args.port}")
     logger.info(f"Base model: {_base_model}")
-    logger.info(f"7 separate LoRA adapters (one per role)")
+    logger.info(f"Shared model for all 7 roles (1 LoRA, trained with all role data)")
     logger.info(f"Endpoints:")
     logger.info(f"  GET  /health              - Status + inference URL")
-    logger.info(f"  POST /train               - Train a role with GRPO")
+    logger.info(f"  POST /train               - Train a role's data through shared model")
     logger.info(f"  POST /v1/chat/completions - Inference (proxied to ART vLLM)")
     logger.info(f"  GET  /v1/models           - List models")
 
-    # Initialize backend + register all 7 role models
-    logger.info("Initializing ART backend and registering 7 role models...")
+    # Initialize backend + register shared model
+    logger.info("Initializing ART backend and registering shared model...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(_init_all_models())
+    loop.run_until_complete(_init_shared_model())
     loop.close()
 
     if _inference_url:
