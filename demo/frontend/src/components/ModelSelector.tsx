@@ -73,7 +73,11 @@ export function ModelSelector() {
   useEffect(() => {
     fetch('/api/config')
       .then(r => r.json())
-      .then(d => setCurrentModel(d.model ?? 'unknown', d.provider ?? 'bedrock'))
+      .then(d => {
+        if (d.model && d.model !== 'unknown') {
+          setCurrentModel(d.model, d.provider ?? 'bedrock')
+        }
+      })
       .catch(() => {})
   }, [setCurrentModel])
 
@@ -101,19 +105,18 @@ export function ModelSelector() {
   async function selectModel(id: string) {
     setOpen(false)
     if (normalizeId(id) === normalizeId(currentModel)) return
+    // Optimistic update — show the new model immediately
+    setCurrentModel(id, 'bedrock')
+    setModelChanged(true)
+    // Tell the backend to reconfigure for the next reset
     try {
-      const res = await fetch('/api/reconfigure', {
+      await fetch('/api/reconfigure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: id, provider: 'bedrock' }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setCurrentModel(data.model, data.provider)
-        setModelChanged(true)
-      }
     } catch {
-      // silently ignore network errors
+      // best-effort — UI already updated
     }
   }
 

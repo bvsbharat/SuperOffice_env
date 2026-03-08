@@ -24,11 +24,13 @@ router = APIRouter()
 # Shared bridge instance (created lazily on first reset or state request)
 _bridge: OfficeOsBridge | None = None
 _ws_connections: list[WebSocket] = []
+# Track the currently configured model/provider so /api/config is always accurate
+_active_config: dict = {"model": "unknown", "provider": "bedrock"}
 
 
 def _get_bridge() -> OfficeOsBridge:
     """Get or create the bridge instance using server config."""
-    global _bridge
+    global _bridge, _active_config
     if _bridge is None:
         # When run as `python server.py`, the module is in sys.modules as '__main__'.
         # Avoid `from server import bridge_config` which collides with office_os/server/ package.
@@ -54,6 +56,7 @@ def _get_bridge() -> OfficeOsBridge:
             art_api_key=bridge_config["art_api_key"],
             aws_region=bridge_config["aws_region"],
         )
+        _active_config = {"model": bridge_config["model"], "provider": bridge_config["provider"]}
     return _bridge
 
 
@@ -97,11 +100,14 @@ async def get_conversations():
 
 @router.get("/api/config")
 async def get_config():
-    bridge = _get_bridge()
-    return {
-        "provider": getattr(bridge, "provider", "bedrock"),
-        "model": getattr(bridge, "model", "unknown"),
-    }
+    # Seed _active_config from server startup config if still unknown
+    if _active_config["model"] == "unknown":
+        import sys as _sys
+        _main = _sys.modules.get("__main__")
+        bc = getattr(_main, "bridge_config", None)
+        if bc:
+            return {"provider": bc.get("provider", "bedrock"), "model": bc.get("model", "unknown")}
+    return _active_config
 
 
 class ReconfigureRequest(BaseModel):
@@ -111,13 +117,15 @@ class ReconfigureRequest(BaseModel):
 
 @router.post("/api/reconfigure")
 async def reconfigure(req: ReconfigureRequest):
-    global _bridge
+    global _bridge, _active_config
     import sys as _sys
     _main = _sys.modules.get("__main__")
     bc = getattr(_main, "bridge_config", None)
     if bc is not None:
         bc["model"] = req.model
         bc["provider"] = req.provider
+    # Track new model immediately so /api/config reflects it without needing a reset
+    _active_config = {"model": req.model, "provider": req.provider}
     # Destroy current bridge so next reset picks up new model
     _bridge = None
     return {"provider": req.provider, "model": req.model, "status": "reconfigured"}

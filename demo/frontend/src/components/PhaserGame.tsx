@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
-import { OfficeSceneV2 } from '../game/OfficeSceneV2'
-import type { PhaserBridge } from '../game/OfficeSceneV2'
+import { OfficeScene } from '../game/OfficeScene'
+import type { PhaserBridge } from '../game/OfficeScene'
 import { useStore } from '../store/useStore'
 import type { AgentId } from '../types'
 
@@ -27,7 +27,7 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.NO_CENTER,
       },
-      scene: OfficeSceneV2,
+      scene: OfficeScene,
     }
 
     const game = new Phaser.Game(config)
@@ -35,7 +35,7 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
 
     // Wait for scene to be ready, then grab bridge
     game.events.on('ready', () => {
-      const scene = game.scene.getScene('OfficeSceneV2') as any
+      const scene = game.scene.getScene('OfficeScene') as any
       if (scene) {
         // The bridge might not be set yet (scene hasn't run create), poll briefly
         const checkBridge = () => {
@@ -107,7 +107,7 @@ export function PhaserGame({ onBridgeReady }: PhaserGameProps) {
       const game = gameRef.current
       if (!game) return
 
-      const scene = game.scene.getScene('OfficeSceneV2') as any
+      const scene = game.scene.getScene('OfficeScene') as any
       if (!scene) return
 
       for (const collab of state.activeCollaborations) {
