@@ -402,7 +402,8 @@ class MarketState:
             last_contacted_day=self.day,
         )
         self.customers.append(customer)
-        self._stage_transitions.append(customer)
+        # NOTE: callers handle _stage_transitions when they advance stage.
+        # Don't append here to avoid double-counting.
 
         # Schedule next customer
         self._next_customer_day = self.day + self._rng.randint(

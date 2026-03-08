@@ -25,7 +25,7 @@ class MarketSimulator:
     def execute_action(self, agent_id: str, action_type: str, target: str, parameters: dict, message: str | None) -> dict:
         """Execute an agent's action and return a result summary."""
         role = agent_id  # agent_id is the role name
-        result = {"agent_id": agent_id, "action_type": action_type, "success": True, "detail": ""}
+        result = {"agent_id": agent_id, "action_type": action_type, "success": True, "detail": "", "parameters": parameters}
 
         # Validate action is allowed for this role
         if action_type not in ROLE_ACTIONS.get(role, []):
