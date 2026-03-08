@@ -76,7 +76,7 @@ Each handler modifies the market state and returns a result dict. Key handler ca
 |------|----------|---------------|
 | **Dev** | `BUILD_FEATURE`, `FIX_BUG`, `SHIP_RELEASE` | Creates/ships features, affects product stability |
 | **Marketing** | `LAUNCH_CAMPAIGN`, `RUN_AD`, `OPTIMIZE_FUNNEL` | Spends budget, generates traffic/leads |
-| **Sales** | `QUALIFY_LEAD`, `RUN_DEMO`, `CLOSE_DEAL` | Advances pipeline, generates revenue |
+| **Sales** | `QUALIFY_LEAD`, `RUN_DEMO`, `CLOSE_DEAL`, `UPDATE_SHEET` | Advances pipeline, generates revenue, syncs Google Sheets |
 | **Content** | `WRITE_BLOG`, `WRITE_CASE_STUDY` | Creates content, drives traffic |
 | **CEO** | `SET_OKRS`, `ALLOCATE_BUDGET`, `PIVOT` | Sets strategy, controls spending |
 | **HR** | `PLAN_SPRINT`, `RESOLVE_BLOCKER` | Coordinates team, removes blockers |
@@ -140,6 +140,7 @@ Specific high-impact actions carry inherent rewards:
 | HR | Velocity boost | +1.0 | Action mentions velocity |
 | Sales | `FOLLOW_UP` | +0.3 | Customer follow-up |
 | Sales | `COLLECT_FEEDBACK` | +0.5 | Feedback collected |
+| Sales | `UPDATE_SHEET` | +0.3 | Syncs pipeline to Google Sheets |
 | Customer | `REFER_LEAD` | +1.0 | New lead generated |
 | Customer | `RENEW_CONTRACT` | +1.5 | Contract renewed |
 | Customer | `GIVE_FEEDBACK` | +0.5 | — |
@@ -175,6 +176,48 @@ Cross-agent synergies that reward teamwork:
 | Vaporware (unshipped feature referenced) | Any | -5.0 |
 | Stale leads (not contacted in 4+ days) | Sales | -0.5 per lead |
 | Budget overrun (budget < $1,000) | Marketing | -0.5 |
+| Missing daily sheet update | Sales | -1.0 |
+
+**Component 6: Base Success Reward**
+
+All successful actions receive +0.1 as a shaping signal, ensuring GRPO gets gradient signal even on "maintenance" turns that don't trigger any of the above components.
+
+#### Context Window Management (`agents/llm_agent.py`)
+
+The vLLM server runs Qwen 2.5 14B with `--max-model-len 4096`. With 512 output tokens reserved, only 3534 input tokens are available for system prompt + user message. As simulations progress, accumulated state (pipeline customers, shared memory, recent actions, reflections) can exceed this budget.
+
+**Two-layer defense:**
+
+**Layer 1 — Sliding Window Limits** (in `_build_user_message`)
+
+Sections are capped at build time to prevent unbounded growth:
+
+| Section | Limit | Rationale |
+|---------|-------|-----------|
+| Pipeline customers | 8 max | Sales needs current pipeline, not history |
+| Shared team memory | Last 3 entries | Most recent updates are most actionable |
+| Team messages | Last 3 | Only current-turn conversations matter |
+| Recent team actions | Last 3 | Older actions are already in shared memory |
+| Role data JSON | 800 chars max | Compact summary, not raw dumps |
+| Reflections | 2 max | High-level insights only |
+
+**Layer 2 — Token-Aware Priority Pruning** (in `_prune_to_budget`)
+
+Uses `tiktoken` (cl100k_base encoding) for actual token counting. When the assembled user message exceeds the token budget (`3534 - system_prompt_tokens`), sections are dropped by priority:
+
+| Priority | Section | Drop order |
+|----------|---------|------------|
+| P0 (never dropped) | Header, KPIs, budget, pipeline/features | — |
+| P1 | Shared team memory | 8th |
+| P2 | Team messages | 7th |
+| P3 | Active events | 6th |
+| P4 | Recent team actions | 5th |
+| P5 | Role data | 4th |
+| P6 | Current plan | 3rd |
+| P7 | Reflections | 2nd (dropped first) |
+| P8 | Call to action | 1st (dropped first) |
+
+If all droppable sections are removed and the message still exceeds budget, a binary-search hard truncation is applied as a last resort.
 
 #### GRPO Training Reward (`training/train_worker.py`)
 
