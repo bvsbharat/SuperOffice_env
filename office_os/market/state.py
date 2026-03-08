@@ -186,6 +186,14 @@ class MarketState:
     recent_actions: list[dict] = field(default_factory=list)
     shared_memory: SharedMemory = field(default_factory=SharedMemory)
 
+    # CEO / HR tracking
+    okrs: list[dict] = field(default_factory=list)  # Current OKRs set by CEO
+    team_velocity: float = 1.0  # 0-2, multiplier on dev/content speed
+    blockers: list[dict] = field(default_factory=list)  # Active blockers
+    contractors: int = 0  # Hired contractors (boost velocity)
+    nps_score: float = 50.0  # Net Promoter Score from customers (0-100)
+    customer_satisfaction: float = 0.5  # 0-1
+
     # Events
     active_events: list[dict] = field(default_factory=list)
 
@@ -247,6 +255,11 @@ class MarketState:
             "features_shipped": len([f for f in self.features if f.shipped]),
             "content_published": len([p for p in self.content_pieces if p.published]),
             "active_campaigns": len([c for c in self.campaigns if c.active]),
+            "team_velocity": self.team_velocity,
+            "nps_score": self.nps_score,
+            "customer_satisfaction": self.customer_satisfaction,
+            "okrs_set": len(self.okrs),
+            "blockers": len(self.blockers),
         }
 
     def get_kpis_for_role(self, role: str) -> dict:
@@ -275,6 +288,23 @@ class MarketState:
                 "content_published": all_kpis["content_published"],
                 "brand_awareness": all_kpis["brand_awareness"],
                 "features_shipped": all_kpis["features_shipped"],
+            }
+        elif role == "ceo":
+            return all_kpis  # CEO sees everything
+        elif role == "hr":
+            return {
+                "team_velocity": all_kpis["team_velocity"],
+                "features_shipped": all_kpis["features_shipped"],
+                "blockers": all_kpis["blockers"],
+                "okrs_set": all_kpis["okrs_set"],
+                "budget_remaining": all_kpis["budget_remaining"],
+            }
+        elif role == "customer":
+            return {
+                "product_stability": all_kpis["product_stability"],
+                "features_shipped": all_kpis["features_shipped"],
+                "nps_score": all_kpis["nps_score"],
+                "content_published": all_kpis["content_published"],
             }
         return all_kpis
 

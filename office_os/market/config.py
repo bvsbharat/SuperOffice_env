@@ -19,18 +19,26 @@ PIPELINE_STAGES = [
 STAGE_REWARDS: dict[str, dict[str, float]] = {
     "visitor": {"content": 0.5},
     "lead": {"content": 1.0, "marketing": 1.5},
-    "qualified": {"sales": 1.0},
+    "qualified": {"sales": 1.0, "hr": 0.3},
     "demo": {"sales": 1.5, "dev": 0.5},
     "proposal": {"sales": 2.0},
-    "closed_won": {"sales": 10.0, "content": 2.0, "marketing": 3.0, "dev": 2.0},
-    "closed_lost": {"sales": -3.0, "marketing": -1.0},
-    "churned": {"dev": -5.0, "sales": -3.0, "content": -1.0, "marketing": -1.0},
+    "closed_won": {"sales": 10.0, "content": 2.0, "marketing": 3.0, "dev": 2.0, "ceo": 5.0, "hr": 1.0, "customer": 2.0},
+    "closed_lost": {"sales": -3.0, "marketing": -1.0, "ceo": -2.0},
+    "churned": {"dev": -5.0, "sales": -3.0, "content": -1.0, "marketing": -1.0, "ceo": -3.0, "customer": -5.0},
 }
 
-AGENT_ROLES = ["dev", "marketing", "sales", "content"]
+AGENT_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
 
 # Actions available per role
 ROLE_ACTIONS: dict[str, list[str]] = {
+    "ceo": [
+        "SET_OKRS",
+        "ALLOCATE_BUDGET",
+        "REVIEW_STRATEGY",
+        "PIVOT",
+        "SEND_DIRECTIVE",
+        "APPROVE_INITIATIVE",
+    ],
     "dev": [
         "BUILD_FEATURE",
         "FIX_BUG",
@@ -63,20 +71,36 @@ ROLE_ACTIONS: dict[str, list[str]] = {
         "WRITE_DOCS",
         "REVISE_CONTENT",
     ],
+    "hr": [
+        "PLAN_SPRINT",
+        "TRACK_OKRS",
+        "RESOLVE_BLOCKER",
+        "HIRE_CONTRACTOR",
+        "PERFORMANCE_REVIEW",
+        "TEAM_SYNC",
+    ],
+    "customer": [
+        "EVALUATE_PRODUCT",
+        "REQUEST_FEATURE",
+        "GIVE_FEEDBACK",
+        "REFER_LEAD",
+        "ESCALATE_ISSUE",
+        "RENEW_CONTRACT",
+    ],
 }
 
 DAY_PHASES = ["morning_standup", "execution", "review", "planning"]
 
-# Turns per phase within a day
+# Turns per phase within a day — increased for 7 agents
 PHASE_TURNS = {
-    "morning_standup": 2,
-    "execution": 6,
-    "review": 1,
+    "morning_standup": 3,
+    "execution": 8,
+    "review": 2,
     "planning": 1,
 }
-TURNS_PER_DAY = sum(PHASE_TURNS.values())  # 10
+TURNS_PER_DAY = sum(PHASE_TURNS.values())  # 14
 EPISODE_DAYS = 90
-EPISODE_TURNS = TURNS_PER_DAY * EPISODE_DAYS  # 900
+EPISODE_TURNS = TURNS_PER_DAY * EPISODE_DAYS
 
 # Contract tiers: name -> (duration_months, reward_multiplier)
 CONTRACT_TIERS: dict[str, dict] = {
@@ -117,6 +141,7 @@ class Config:
     campaign_cost: float = 500.0
     ad_cost: float = 300.0
     ab_test_cost: float = 200.0
+    contractor_cost: float = 1000.0
 
 
 SAMPLE_CUSTOMERS = [

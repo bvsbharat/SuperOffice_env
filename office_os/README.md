@@ -31,20 +31,23 @@ Options:
 
 ## How It Works
 
-4 LLM-powered agents take turns operating a startup:
+7 LLM-powered agents take turns operating a startup:
 
 | Agent | Role | Key Actions |
 |-------|------|-------------|
+| Jeeya (CEO) | Strategy & budget | SET_OKRS, ALLOCATE_BUDGET, PIVOT, SEND_DIRECTIVE |
 | Alex (Dev) | Build product | BUILD_FEATURE, FIX_BUG, SHIP_RELEASE |
 | Jordan (Marketing) | Drive growth | LAUNCH_CAMPAIGN, RUN_AD, OPTIMIZE_FUNNEL |
 | Sam (Sales) | Close deals | QUALIFY_LEAD, RUN_DEMO, CLOSE_DEAL |
 | Casey (Content) | Create content | WRITE_BLOG, WRITE_CASE_STUDY, WRITE_SOCIAL_POST |
+| Pat (HR) | Operations | PLAN_SPRINT, RESOLVE_BLOCKER, HIRE_CONTRACTOR |
+| Customer | Reward oracle | EVALUATE_PRODUCT, REQUEST_FEATURE, REFER_LEAD, RENEW_CONTRACT |
 
 Customers flow through a pipeline: `visitor → lead → qualified → demo → proposal → negotiation → closed_won`
 
 Deals can be closed with contract tiers: **monthly** (1x reward), **6-month** (2x), **annual** (3x).
 
-Each agent has a Smallville-style memory stream (observations, reflections, plans) and receives asymmetric observations scoped to their role.
+Each agent has a Smallville-style memory stream (observations, reflections, plans), a shared team memory board for A2A communication, and receives asymmetric observations scoped to their role.
 
 ### Real-World Integration
 

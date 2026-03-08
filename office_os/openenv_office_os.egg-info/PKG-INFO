@@ -7,6 +7,7 @@ Requires-Dist: openenv-core[core]>=0.2.0
 Requires-Dist: gspread>=6.0.0
 Requires-Dist: anthropic>=0.40.0
 Requires-Dist: boto3>=1.42.63
+Requires-Dist: python-dotenv>=1.0.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0.0; extra == "dev"
 Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
