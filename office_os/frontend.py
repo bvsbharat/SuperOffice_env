@@ -283,9 +283,9 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
 
 def run_dashboard(days: int = 90, model_name: str = "Qwen/Qwen2.5-3B-Instruct",
                   speed: float = 0.5, train_every: int = 3,
-                  northflank_endpoint: str = ""):
+                  northflank_endpoint: str = "", scenario: str = "baseline"):
     """Run the simulation with a live terminal dashboard and remote training."""
-    env = OfficeOsEnvironment()
+    env = OfficeOsEnvironment(scenario=scenario)
     obs = env.reset()
 
     agents = {role: LLMAgent(role=role) for role in AGENT_ROLES}
@@ -542,6 +542,9 @@ def main():
                         help="Northflank inference endpoint URL")
     parser.add_argument("--northflank-train-endpoint", type=str, default="",
                         help="Northflank training endpoint URL")
+    parser.add_argument("--scenario", type=str, default="baseline",
+                        choices=["baseline", "competitor", "series_a", "churn", "viral"],
+                        help="Simulation scenario (default: baseline)")
 
     args = parser.parse_args()
 
@@ -555,7 +558,7 @@ def main():
         console.print("[red]Northflank endpoint required. Set NORTHFLANK_INFERENCE_ENDPOINT in .env or use --northflank-endpoint[/]")
         sys.exit(1)
 
-    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.model} | Days: {args.days}")
+    console.print(f"[bold]Office OS Dashboard[/] | Model: {args.model} | Days: {args.days} | Scenario: {args.scenario}")
     console.print(f"[dim]Endpoint: {nf_endpoint}[/]")
     console.print(f"[dim]Training every {args.train_every} days via {nf_train_endpoint or nf_endpoint}[/]")
     console.print("[dim]Starting simulation...[/]\n")
@@ -567,6 +570,7 @@ def main():
         speed=args.speed,
         train_every=args.train_every,
         northflank_endpoint=nf_endpoint,
+        scenario=args.scenario,
     )
 
 

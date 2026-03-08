@@ -53,11 +53,12 @@ class OfficeOsEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self):
+    def __init__(self, scenario: str = "baseline"):
+        self._scenario = scenario
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial()
+        self._market = MarketState.initial(scenario=scenario)
         self._simulator = MarketSimulator(self._market)
-        self._events = EventEngine()
+        self._events = EventEngine(scenario_name=scenario)
         self._rewards = RewardCalculator()
         self._sheets = GoogleSheetsSync()
         self._sheets.setup()
@@ -65,8 +66,9 @@ class OfficeOsEnvironment(Environment):
     def reset(self) -> OfficeOsObservation:
         """Reset the environment to day 1 of a new startup quarter."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial()
+        self._market = MarketState.initial(scenario=self._scenario)
         self._simulator = MarketSimulator(self._market)
+        self._events = EventEngine(scenario_name=self._scenario)
         self._rewards = RewardCalculator()
         self._rewards.snapshot(self._market)
 

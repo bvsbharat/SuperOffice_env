@@ -204,16 +204,23 @@ class MarketState:
     _rng: random.Random = field(default_factory=lambda: random.Random())
 
     @classmethod
-    def initial(cls, seed: int | None = None) -> MarketState:
-        """Create initial market state."""
+    def initial(cls, seed: int | None = None, scenario: str = "baseline") -> MarketState:
+        """Create initial market state, optionally modified by a scenario."""
         cfg = Config()
         rng = random.Random(seed)
+
+        from .scenarios import get_scenario
+        sc = get_scenario(scenario)
+
         state = cls(
-            website_traffic=cfg.initial_traffic,
+            website_traffic=int(cfg.initial_traffic * sc.traffic_modifier),
             conversion_rate=cfg.initial_conversion_rate,
             revenue=cfg.initial_revenue,
             brand_awareness=cfg.initial_brand_awareness,
-            budget_remaining=cfg.initial_budget,
+            budget_remaining=cfg.initial_budget * sc.budget_modifier,
+            nps_score=sc.initial_nps,
+            customer_satisfaction=sc.initial_satisfaction,
+            product_stability=sc.initial_stability,
             _rng=rng,
         )
         # Seed the backlog with a couple of feature requests
@@ -222,8 +229,16 @@ class MarketState:
             {"id": str(uuid4())[:8], "name": "API v2", "description": "RESTful API improvements", "priority": "medium", "requested_by": "market"},
             {"id": str(uuid4())[:8], "name": "Dashboard Redesign", "description": "New analytics dashboard", "priority": "low", "requested_by": "market"},
         ]
-        # Seed 2 initial customers already in the pipeline as leads
-        for template in SAMPLE_CUSTOMERS[:2]:
+        # Add scenario-specific backlog items
+        for item in sc.extra_backlog:
+            state.backlog.append(item)
+        # Add scenario-specific bug reports
+        for bug in sc.extra_bug_reports:
+            state.bug_reports.append(bug)
+
+        # Seed initial customers as leads
+        num_leads = min(sc.initial_leads, len(SAMPLE_CUSTOMERS))
+        for template in SAMPLE_CUSTOMERS[:num_leads]:
             customer = Customer(
                 id=str(uuid4())[:8],
                 name=template["name"],
@@ -237,7 +252,24 @@ class MarketState:
                 last_contacted_day=1,
             )
             state.customers.append(customer)
-        state._customer_pool_index = 2
+        state._customer_pool_index = num_leads
+
+        # Add scenario-specific extra customers
+        for ec in sc.extra_customers:
+            customer = Customer(
+                id=str(uuid4())[:8],
+                name=ec["name"],
+                company_size=ec["company_size"],
+                industry=ec["industry"],
+                budget=ec["budget"],
+                pain_point=ec["pain_point"],
+                source="scenario",
+                stage="lead",
+                created_day=1,
+                last_contacted_day=1,
+            )
+            state.customers.append(customer)
+
         return state
 
     def get_all_kpis(self) -> dict:
