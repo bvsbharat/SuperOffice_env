@@ -2,23 +2,23 @@
 Northflank Training + Inference Server for Office OS.
 
 Runs on a Northflank H100 GPU. Provides:
-  1. vLLM inference endpoint (OpenAI-compatible) for trained models
-  2. Training endpoint that accepts trajectories and runs ART GRPO training
+  1. Training endpoint that accepts trajectories and runs ART GRPO training
+  2. vLLM inference endpoint (OpenAI-compatible) for trained models
 
 Deploy this on your Northflank H100 service, then point the simulation
 at this server's URL for training + inference.
 
 Usage on Northflank:
-    pip install openpipe-art vllm fastapi uvicorn
-    python training/northflank_server.py --base-model Qwen/Qwen2.5-3B-Instruct --port 8080
+    pip install "openpipe-art[backend]" fastapi uvicorn
+    python training/northflank_server.py --port 8080
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -29,12 +29,11 @@ import uvicorn
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Office OS ART Training Server", version="1.0.0")
-
-# Global state
+# Global state — initialized lazily on first /train request
 _backend = None
 _models: dict[str, Any] = {}
 _base_model = "Qwen/Qwen2.5-3B-Instruct"
+_initialized = False
 
 
 class TrajectoryInput(BaseModel):
@@ -68,41 +67,86 @@ class InferenceInfo(BaseModel):
     train_step: int
 
 
-@app.on_event("startup")
-async def startup():
-    """Initialize ART LocalBackend on startup (connects to GPU)."""
-    global _backend, _base_model
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: just log GPU info. ART backend is initialized lazily."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1e9
+            logger.info(f"GPU detected: {gpu_name} ({gpu_mem:.0f}GB)")
+        else:
+            logger.warning("No GPU detected! Training will be slow.")
+    except Exception:
+        logger.warning("Could not check GPU status")
+
+    logger.info(f"Server ready. ART backend will initialize on first /train request.")
+    yield
+    logger.info("Shutting down.")
+
+
+app = FastAPI(title="Office OS ART Training Server", version="1.0.0", lifespan=lifespan)
+
+
+async def _ensure_backend():
+    """Lazily initialize the ART LocalBackend on first use."""
+    global _backend, _initialized
+
+    if _initialized:
+        return _backend is not None
+
+    _initialized = True
 
     try:
         import art
         from art.local import LocalBackend
 
         _backend = LocalBackend()
-        logger.info(f"ART LocalBackend initialized on H100 GPU")
-        logger.info(f"Base model: {_base_model}")
-
-        # Check GPU
-        import torch
-        if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(0)
-            gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1e9
-            logger.info(f"GPU: {gpu_name} ({gpu_mem:.0f}GB)")
-        else:
-            logger.warning("No GPU detected! Training will be slow.")
+        logger.info("ART LocalBackend initialized on H100 GPU")
+        return True
 
     except Exception as e:
         logger.error(f"Failed to initialize ART backend: {e}")
-        logger.error("Make sure openpipe-art is installed with: pip install 'openpipe-art[backend]'")
+        logger.error("Training will not be available. Inference-only mode.")
+        return False
+
+
+async def _ensure_model(role: str, base_model: str | None = None):
+    """Register a model for a role if not already done."""
+    if role in _models:
+        return _models[role]
+
+    import art
+
+    model = art.TrainableModel(
+        name=f"office-os-{role}-{datetime.now().strftime('%Y%m%d')}",
+        project="office-os",
+        base_model=base_model or _base_model,
+    )
+    await model.register(_backend)
+    _models[role] = model
+    logger.info(f"Registered model for {role}: {model.name}")
+    return model
 
 
 @app.get("/health")
 async def health():
     """Health check."""
-    import torch
+    gpu_available = False
+    gpu_name = None
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        if gpu_available:
+            gpu_name = torch.cuda.get_device_name(0)
+    except Exception:
+        pass
+
     return {
         "status": "ok",
-        "gpu_available": torch.cuda.is_available(),
-        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "gpu_available": gpu_available,
+        "gpu_name": gpu_name,
         "models_loaded": list(_models.keys()),
         "backend_ready": _backend is not None,
     }
@@ -111,15 +155,19 @@ async def health():
 @app.get("/models")
 async def list_models():
     """List all registered models."""
-    return {
-        role: {
+    result = {}
+    for role, model in _models.items():
+        try:
+            step = await model.get_step()
+        except Exception:
+            step = 0
+        result[role] = {
             "name": model.name,
             "base_model": model.base_model,
-            "step": await model.get_step(),
+            "step": step,
             "inference_url": model.inference_base_url,
         }
-        for role, model in _models.items()
-    }
+    return result
 
 
 @app.post("/train", response_model=TrainResponse)
@@ -130,25 +178,17 @@ async def train(request: TrainRequest):
     This runs GRPO training on the H100 GPU using ART's LocalBackend.
     After training, the updated LoRA adapter is loaded into vLLM automatically.
     """
-    if _backend is None:
-        raise HTTPException(status_code=503, detail="ART backend not initialized")
+    # Initialize backend on first call
+    ready = await _ensure_backend()
+    if not ready:
+        raise HTTPException(status_code=503, detail="ART backend not available. Check GPU and openpipe-art[backend] installation.")
 
     import art
 
     role = request.role
 
-    # Register model if not yet done
-    if role not in _models:
-        model = art.TrainableModel(
-            name=f"office-os-{role}-{datetime.now().strftime('%Y%m%d')}",
-            project="office-os",
-            base_model=request.base_model or _base_model,
-        )
-        await model.register(_backend)
-        _models[role] = model
-        logger.info(f"Registered model for {role}: {model.name}")
-
-    model = _models[role]
+    # Register model if needed
+    model = await _ensure_model(role, request.base_model)
 
     # Convert request trajectories to ART format
     trajectories = []
@@ -208,7 +248,10 @@ async def inference_info(role: str):
         raise HTTPException(status_code=404, detail=f"No model registered for role: {role}")
 
     model = _models[role]
-    step = await model.get_step()
+    try:
+        step = await model.get_step()
+    except Exception:
+        step = 0
 
     return InferenceInfo(
         role=role,
@@ -239,7 +282,8 @@ def main():
     logger.info(f"  POST /train           - Train a role's model")
     logger.info(f"  GET  /inference/{{role}} - Get inference endpoint for a role")
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    # Use --loop uvloop=False to avoid conflict with ART
+    uvicorn.run(app, host=args.host, port=args.port, loop="asyncio")
 
 
 if __name__ == "__main__":
