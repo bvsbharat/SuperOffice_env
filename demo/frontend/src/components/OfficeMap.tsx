@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { PhaserGame } from './PhaserGame'
 import { MapOverlays } from './MapOverlays'
-import type { PhaserBridge } from '../game/OfficeScene'
+import type { PhaserBridge } from '../game/OfficeSceneV2'
 
 export function OfficeMap() {
   const [bridge, setBridge] = useState<PhaserBridge | null>(null)
