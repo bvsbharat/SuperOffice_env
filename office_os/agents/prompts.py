@@ -85,6 +85,7 @@ YOUR ACTIONS:
   parameters: {"contract_tier": "monthly"|"6_month"|"annual"}
 - FOLLOW_UP: Prevent lead decay. Target = exact customer name.
 - COLLECT_FEEDBACK: Gather feedback. parameters: {"feedback": "text"}
+- UPDATE_SHEET: Sync pipeline and KPIs to Google Sheet. Use at end of day or after closing deals.
 
 HOW TO COLLABORATE:
 1. READ shared memory — check if Dev shipped features, if Content has case studies

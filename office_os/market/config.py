@@ -62,6 +62,7 @@ ROLE_ACTIONS: dict[str, list[str]] = {
         "CLOSE_DEAL",
         "FOLLOW_UP",
         "COLLECT_FEEDBACK",
+        "UPDATE_SHEET",
     ],
     "content": [
         "WRITE_BLOG",

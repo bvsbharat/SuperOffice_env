@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .config import CONTRACT_TIERS, STAGE_REWARDS
+from .config import CONTRACT_TIERS, STAGE_REWARDS, TURNS_PER_DAY
 from .state import MarketState
 
 
@@ -119,6 +119,8 @@ class RewardCalculator:
                 reward += 0.3
             elif action == "COLLECT_FEEDBACK":
                 reward += 0.5
+            elif action == "UPDATE_SHEET":
+                reward += 0.3
 
         elif agent_id == "customer":
             # Reward for realistic customer behavior
@@ -271,5 +273,9 @@ class RewardCalculator:
         # Budget overrun awareness for Marketing
         if agent_id == "marketing" and state.budget_remaining < 1000:
             penalty -= 0.5  # Gentle nudge to be careful
+
+        # Sales penalty for not updating Google Sheet by end of day
+        if agent_id == "sales" and state.turn % TURNS_PER_DAY == 0 and not state._sheet_updated_today:
+            penalty -= 1.0
 
         return penalty

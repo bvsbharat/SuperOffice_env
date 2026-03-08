@@ -272,6 +272,10 @@ class MarketSimulator:
             fb = {"customer": target, "content": parameters.get("feedback", "general feedback"), "day": self.state.day}
             self.state.feedback.append(fb)
             result["detail"] = f"Collected feedback from {target}"
+        elif action_type == "UPDATE_SHEET":
+            result["detail"] = "Pipeline and KPIs synced to Google Sheet"
+            result["_trigger_sheets_sync"] = True
+            self.state._sheet_updated_today = True
         return result
 
     def _sales_qualify(self, customer: Customer, result: dict) -> dict:

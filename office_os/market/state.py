@@ -205,6 +205,7 @@ class MarketState:
     _rng: random.Random = field(default_factory=lambda: random.Random())
     _last_referral_day: int = 0
     _renewed_customer_ids: dict = field(default_factory=dict)
+    _sheet_updated_today: bool = False
 
     @classmethod
     def initial(cls, seed: int | None = None, scenario: str = "baseline") -> MarketState:
@@ -440,6 +441,7 @@ class MarketState:
         if self.turn % TURNS_PER_DAY == 0 and self.turn > 0:
             self.day += 1
             self.phase_turn = 0
+            self._sheet_updated_today = False
 
             # Monthly budget refresh (every 30 days)
             if self.day % 30 == 0:

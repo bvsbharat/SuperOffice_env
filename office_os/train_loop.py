@@ -141,9 +141,6 @@ def run_episode(
             )
             day_rewards = {role: 0.0 for role in AGENT_ROLES}
 
-            # Sync to Google Sheets once per day (not every step)
-            env.sync_sheets()
-
         # Periodic reflection
         if turn % (10 * len(AGENT_ROLES)) == 0:
             for r, a in agents.items():

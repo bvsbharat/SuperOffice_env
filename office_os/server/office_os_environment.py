@@ -135,6 +135,10 @@ class OfficeOsEnvironment(Environment):
             action_result=action_result,
         )
 
+        # Sync sheets if sales agent triggered UPDATE_SHEET
+        if action_result.get("_trigger_sheets_sync"):
+            self.sync_sheets()
+
         # Create invoice sheets for any newly closed deals
         for customer in self._market.customers:
             if customer.stage == "closed_won" and customer.previous_stage != "closed_won":
