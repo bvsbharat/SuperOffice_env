@@ -462,7 +462,7 @@ export function RewardPanel() {
       {/* Full-screen reward modal — fixed dark theme regardless of app theme */}
       {fullView && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '100%', maxWidth: 1200, height: '92vh', maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)', margin: '0 auto', borderRadius: 12, boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px var(--color-border)', overflow: 'hidden' }}>
+          <div style={{ width: '100%', maxWidth: 1400, height: '100vh', maxHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--color-panel)', margin: '0 auto', borderRadius: 0, boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px var(--color-border)', overflow: 'hidden' }}>
 
             {/* ── Modal header ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
@@ -508,11 +508,11 @@ export function RewardPanel() {
                 visitor:    { content: 0.5 },
                 lead:       { content: 1.0, marketing: 1.5 },
                 qualified:  { sales: 1.0, hr: 0.3 },
-                demo:       { sales: 1.5, dev: 0.5 },
+                demo:       { sales: 1.5, dev: 1.0 },
                 proposal:   { sales: 2.0 },
                 closed_won: { sales: 10.0, content: 2.0, marketing: 3.0, dev: 2.0, ceo: 5.0, hr: 1.0, customer: 2.0 },
-                closed_lost:{ sales: -3.0, marketing: -1.0, ceo: -2.0 },
-                churned:    { dev: -5.0, sales: -3.0, content: -1.0, marketing: -1.0, ceo: -3.0, customer: -5.0 },
+                closed_lost:{ sales: -3.0, marketing: -1.0, ceo: -2.0, hr: -0.5, content: -0.5 },
+                churned:    { dev: -5.0, sales: -3.0, content: -2.0, marketing: -1.0, ceo: -3.0, customer: -5.0, hr: -1.0 },
               }
               const stageDot = (s: string) => ['closed_lost','churned'].includes(s) ? C.red : C.green
 
@@ -633,17 +633,29 @@ export function RewardPanel() {
 
                     {/* Direct action bonuses */}
                     <div style={{ marginBottom: 22 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 10 }}>Direct Action Bonuses</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 4 }}>Direct Action Bonuses</div>
+                      <div style={{ fontSize: 9, color: C.muted, marginBottom: 10 }}>+0.1 base shaping reward for any successful action (GRPO gradient signal)</div>
                       {[
                         { role: 'dev',      action: 'SHIP_RELEASE',    pts: '+3.0', note: 'Per feature shipped' },
-                        { role: 'dev',      action: 'BUILD_FEATURE',   pts: '+0.5', note: 'Progress on build' },
-                        { role: 'content',  action: 'Publish content', pts: '+0.5', note: 'Per published piece' },
+                        { role: 'dev',      action: 'BUILD_FEATURE',   pts: '+1.0', note: 'Ready to ship (+0.5 in progress)' },
+                        { role: 'dev',      action: 'FIX_BUG',         pts: '+0.8', note: '+0.5 empathy for customer bugs' },
+                        { role: 'dev',      action: 'REFACTOR',        pts: '+0.5', note: 'Code improvement' },
+                        { role: 'dev',      action: 'WRITE_DOCS',      pts: '+0.3', note: 'Documentation' },
+                        { role: 'dev',      action: 'REVIEW_PR',       pts: '+0.3', note: 'Code review' },
+                        { role: 'content',  action: 'Publish content', pts: '+0.3', note: 'Per piece (+0.2 progress)' },
                         { role: 'ceo',      action: 'SET_OKRS',        pts: '+1.0', note: 'Per OKR set' },
                         { role: 'ceo',      action: 'SEND_DIRECTIVE',  pts: '+0.3', note: 'Per directive' },
                         { role: 'hr',       action: 'RESOLVE_BLOCKER', pts: '+1.5', note: 'Unblocking team' },
+                        { role: 'hr',       action: 'Velocity boost',  pts: '+1.0', note: 'Team velocity increase' },
                         { role: 'hr',       action: 'PLAN_SPRINT',     pts: '+0.5', note: 'Sprint planning' },
-                        { role: 'customer', action: 'REFER_LEAD',      pts: '+2.0', note: 'New lead generated' },
-                        { role: 'customer', action: 'RENEW_CONTRACT',  pts: '+3.0', note: 'Contract renewed' },
+                        { role: 'sales',    action: 'COLLECT_FEEDBACK',pts: '+0.5', note: 'Feedback collection' },
+                        { role: 'sales',    action: 'FOLLOW_UP',       pts: '+0.3', note: 'Lead follow-up' },
+                        { role: 'sales',    action: 'UPDATE_SHEET',    pts: '+0.3', note: 'CRM update' },
+                        { role: 'customer', action: 'REFER_LEAD',      pts: '+1.0', note: 'New lead generated' },
+                        { role: 'customer', action: 'RENEW_CONTRACT',  pts: '+1.5', note: 'Contract renewed' },
+                        { role: 'customer', action: 'GIVE_FEEDBACK',   pts: '+0.5', note: 'Product feedback' },
+                        { role: 'customer', action: 'ESCALATE_ISSUE',  pts: '+0.4', note: 'Drives dev bug fixes' },
+                        { role: 'customer', action: 'REQUEST_FEATURE', pts: '+0.3', note: 'Drives product development' },
                       ].map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
                           <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.role}</span>
@@ -670,6 +682,44 @@ export function RewardPanel() {
                           <span style={{ fontSize: 9, color: C.muted, minWidth: 80 }}>{b.pair}</span>
                         </div>
                       ))}
+                      <div style={{ fontSize: 10, fontWeight: 600, color: C.text, marginTop: 10, marginBottom: 6 }}>Churn Prevention (when satisfaction &lt; 0.4)</div>
+                      {[
+                        { who: 'dev',   what: 'FIX_BUG or REFACTOR during low satisfaction',       pts: '+0.5' },
+                        { who: 'sales', what: 'FOLLOW_UP or COLLECT_FEEDBACK during low satisfaction', pts: '+0.5' },
+                        { who: 'hr',    what: 'RESOLVE_BLOCKER during crisis',                      pts: '+0.5' },
+                        { who: 'ceo',   what: 'REVIEW_STRATEGY or SEND_DIRECTIVE during crisis',    pts: '+0.3' },
+                      ].map((b, i) => (
+                        <div key={`churn-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
+                          <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>
+                          <span style={{ fontSize: 10, color: C.text, flex: 1 }}>{b.what}</span>
+                          <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 800, color: C.green, minWidth: 36, textAlign: 'right' }}>{b.pts}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* KPI Delta Rewards */}
+                    <div style={{ marginBottom: 22 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 4 }}>KPI Delta Rewards</div>
+                      <div style={{ fontSize: 9, color: C.muted, marginBottom: 10 }}>Per-step improvement bonuses with diminishing returns</div>
+                      {[
+                        { kpi: 'Website Traffic',       who: 'content / marketing', pts: 'min(d/500, 1.0)', note: 'Others x0.2; content diminishes after 5 pieces' },
+                        { kpi: 'Revenue',               who: 'sales x2',            pts: 'min(d/5k, 2.0)',  note: 'Others x0.5' },
+                        { kpi: 'Pipeline Value',        who: 'sales',               pts: 'min(d/10k, 1.0)', note: '' },
+                        { kpi: 'Product Stability',     who: 'dev',                 pts: 'min(d*15, 1.5)',  note: 'Rewards bug fixes & refactoring' },
+                        { kpi: 'Customer Satisfaction',  who: 'all roles',           pts: '+d*2.0',          note: 'Empathy signal; -d*1.5 penalty for dev/sales/ceo' },
+                        { kpi: 'NPS Score',             who: 'all roles',           pts: 'min(d/20, 0.5)',  note: '-0.3 for dev/sales/customer on drops >5' },
+                      ].map((b, i) => (
+                        <div key={i} style={{ padding: '6px 10px', borderRadius: 5, marginBottom: 3, background: i % 2 === 0 ? C.card : 'transparent', border: `1px solid ${C.border}` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: C.text, flex: 1 }}>{b.kpi}</span>
+                            <span style={{ fontSize: 9, fontFamily: 'monospace', fontWeight: 700, color: C.green }}>{b.pts}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                            <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted }}>{b.who}</span>
+                            {b.note && <span style={{ fontSize: 8, color: C.muted }}>{b.note}</span>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     {/* Penalties */}
@@ -677,9 +727,10 @@ export function RewardPanel() {
                       <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 10 }}>Penalties</div>
                       {[
                         { who: 'all',       what: 'Action fails',                      pts: '−1.0', note: 'Per failure' },
-                        { who: 'sales',     what: 'Stale lead (>4 days no contact)',   pts: '−0.5', note: 'Per stale lead' },
-                        { who: 'marketing', what: 'Budget below $1,000',               pts: '−0.5', note: 'Budget overrun warning' },
                         { who: 'dev',       what: 'Vaporware — content before ship',   pts: '−5.0', note: 'Unshipped feature in content' },
+                        { who: 'sales',     what: 'Stale lead (>4 days no contact)',   pts: '−0.5', note: 'Per stale lead' },
+                        { who: 'sales',     what: 'Sheet not updated by end of day',   pts: '−1.0', note: 'CRM discipline' },
+                        { who: 'marketing', what: 'Budget below $1,000',               pts: '−0.5', note: 'Budget overrun warning' },
                       ].map((b, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, marginBottom: 2, background: i % 2 === 0 ? C.card : 'transparent' }}>
                           <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 600, background: 'var(--color-card-bg)', color: C.muted, minWidth: 56, textAlign: 'center' }}>{b.who}</span>

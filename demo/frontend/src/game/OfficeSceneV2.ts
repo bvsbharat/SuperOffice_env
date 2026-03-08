@@ -374,15 +374,31 @@ export class OfficeSceneV2 extends Phaser.Scene {
 
       nameText.setPosition(sprite.x, baseY + 30)
 
-      // Update speech bubbles
+      // Update speech bubbles — counter-scale with camera zoom so text stays readable
       const bubbleObj = this.speechBubbleObjects.get(aid)
       if (bubbleObj) {
         if (Date.now() > bubbleObj.expiresAt) {
           this.hideSpeechBubble(aid)
         } else {
-          bubbleObj.bubble.setPosition(sprite.x, baseY - 50)
-          const textW = bubbleObj.label.width
-          bubbleObj.label.setPosition(sprite.x - textW / 2, baseY - 70)
+          const camZoom = this.cameras.main.zoom
+          const invZoom = 1 / camZoom  // counter-scale: bigger when zoomed out
+          const clampedScale = Math.max(invZoom, 0.5)  // don't shrink below 0.5x even when zoomed in
+
+          bubbleObj.bubble.setScale(clampedScale)
+          bubbleObj.label.setScale(clampedScale)
+
+          const offsetY = 50 * clampedScale
+          bubbleObj.bubble.setPosition(Math.round(sprite.x), Math.round(baseY - offsetY))
+
+          const textW = bubbleObj.label.width * clampedScale
+          const textH = bubbleObj.label.height * clampedScale
+          const boxH = textH + 20 * clampedScale
+          const tailH = 7 * clampedScale
+          const padY = 10 * clampedScale
+          bubbleObj.label.setPosition(
+            Math.round(sprite.x - textW / 2),
+            Math.round(baseY - offsetY - boxH - tailH + padY)
+          )
         }
       }
 
@@ -442,31 +458,52 @@ export class OfficeSceneV2 extends Phaser.Scene {
     if (!agentData) return
 
     const { sprite } = agentData
-    const truncated = text.length > 100 ? text.slice(0, 97) + '...' : text
+    const truncated = text.length > 140 ? text.slice(0, 137) + '...' : text
 
     const label = this.add.text(0, 0, truncated, {
-      fontSize: '12px',
-      color: '#000000',
-      wordWrap: { width: 180 },
-      align: 'center',
+      fontSize: '16px',
+      fontFamily: '"SF Pro Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+      color: '#1a1a1a',
+      wordWrap: { width: 240 },
+      align: 'left',
+      lineSpacing: 3,
+      resolution: 2,
     })
-    label.setOrigin(0.5)
     label.setDepth(21)
+    label.texture.setFilter(Phaser.Textures.FilterMode.LINEAR)
 
     const textW = label.width
     const textH = label.height
-    const boxW = textW + 12
-    const boxH = textH + 8
+    const padX = 14
+    const padY = 10
+    const boxW = textW + 2 * padX
+    const boxH = textH + 2 * padY
+    const tailSize = 7
+    const radius = 6
 
     const bubble = this.add.graphics()
-    bubble.fillStyle(0xffffff, 0.95)
-    bubble.fillRoundedRect(-boxW / 2, -boxH - 8, boxW, boxH, 4)
-    bubble.lineStyle(1, 0x000000, 1)
-    bubble.strokeRoundedRect(-boxW / 2, -boxH - 8, boxW, boxH, 4)
+    // White fill with slight shadow effect
+    bubble.fillStyle(0xffffff, 0.97)
+    bubble.fillRoundedRect(-boxW / 2, -boxH - tailSize, boxW, boxH, radius)
+    bubble.lineStyle(1.5, 0x374151, 0.6)
+    bubble.strokeRoundedRect(-boxW / 2, -boxH - tailSize, boxW, boxH, radius)
+    // Tail triangle
+    bubble.fillStyle(0xffffff, 0.97)
+    bubble.fillTriangle(-tailSize, -tailSize, tailSize, -tailSize, 0, 0)
+    bubble.lineStyle(1.5, 0x374151, 0.6)
+    bubble.lineBetween(-tailSize, -tailSize, 0, 0)
+    bubble.lineBetween(tailSize, -tailSize, 0, 0)
+    // Cover tail-box seam
+    bubble.fillStyle(0xffffff, 0.97)
+    bubble.fillRect(-tailSize + 1, -tailSize - 1, tailSize * 2 - 2, 3)
+
     bubble.setPosition(sprite.x, sprite.y - 50)
     bubble.setDepth(20)
 
-    label.setPosition(sprite.x - textW / 2, sprite.y - 50 - boxH - 4)
+    label.setPosition(
+      Math.round(sprite.x - textW / 2),
+      Math.round(sprite.y - 50 - boxH - tailSize + padY)
+    )
 
     this.speechBubbleObjects.set(agentId, { bubble, label, expiresAt })
   }
