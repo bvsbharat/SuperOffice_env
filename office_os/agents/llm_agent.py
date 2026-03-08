@@ -145,9 +145,13 @@ class LLMAgent:
                     continue
                 break
             except Exception as e:
+                err_str = str(e)
+                # On context length error, aggressively truncate and retry immediately
+                if "context length" in err_str or "input_tokens" in err_str:
+                    user_msg = user_msg[:len(user_msg) // 2] + "\n[truncated]"
+                    logger.warning(f"{self.role}: context too long, truncating to {len(user_msg)} chars")
+                    continue
                 logger.warning(f"{mode} attempt {attempt+1}/{max_attempts} for {self.role}: {type(e).__name__}: {e}")
-                import traceback
-                logger.warning(traceback.format_exc())
                 if attempt < max_attempts - 1:
                     import time
                     time.sleep(2)
@@ -191,14 +195,16 @@ class LLMAgent:
                 f"{', '.join(unique_rejected)}. Do NOT use them."
             )
 
-        # Truncate user message to fit within context window
-        # 4096 tokens total - 512 output = 3584 input tokens
-        # System prompt + json_instruction ≈ ~1200 tokens (~4800 chars)
-        # Reserve ~2300 tokens (~9200 chars) for user message
         system_content = self.system_prompt + json_instruction
-        max_user_chars = max(2000, (3584 * 4) - len(system_content))
+
+        # Truncate user message to fit within context window
+        # 4096 tokens - 512 output = 3584 input tokens
+        # Use ~2.5 chars/token (conservative for Qwen tokenizer)
+        system_tokens_est = len(system_content) / 2.5
+        max_user_tokens = 3584 - system_tokens_est - 50  # 50 token safety margin
+        max_user_chars = max(1500, int(max_user_tokens * 2.5))
         if len(user_msg) > max_user_chars:
-            user_msg = user_msg[:max_user_chars] + "\n\n[... truncated for context length ...]"
+            user_msg = user_msg[:max_user_chars] + "\n[truncated]"
 
         response = self.openai_client.chat.completions.create(
             model=self._vllm_endpoint["model_name"],
@@ -396,8 +402,20 @@ class LLMAgent:
             parts.append("")
 
         if role_data:
+            # Compact role data to save tokens — skip large nested objects
+            compact = {}
+            for k, v in role_data.items():
+                if isinstance(v, list) and len(v) > 5:
+                    compact[k] = v[:5]  # Limit lists to 5 items
+                elif isinstance(v, str) and len(v) > 200:
+                    compact[k] = v[:200]
+                else:
+                    compact[k] = v
+            role_str = json.dumps(compact, indent=1, default=str)
+            if len(role_str) > 1500:
+                role_str = role_str[:1500] + "..."
             parts.append("## Your role data")
-            parts.append(json.dumps(role_data, indent=2, default=str))
+            parts.append(role_str)
             parts.append("")
 
         if context.get("current_plan"):
