@@ -11,6 +11,9 @@
 [![React + Phaser + Three.js](https://img.shields.io/badge/Frontend-React%20%2B%20Phaser%20%2B%20Three.js-61DAFB)](https://reactjs.org)
 [![License: BSD-3](https://img.shields.io/badge/License-BSD--3-orange)](LICENSE)
 [![Trained LoRA Adapters](https://img.shields.io/badge/HuggingFace-LoRA%20Adapters-yellow)](https://huggingface.co/HarshalH/office-os-loras)
+[![Demo Video](https://img.shields.io/badge/Demo-YouTube-red)](https://youtu.be/dfWrsrGQCQo)
+
+[**Watch the Demo Video**](https://youtu.be/dfWrsrGQCQo)
 
 </div>
 
