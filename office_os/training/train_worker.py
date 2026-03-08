@@ -378,13 +378,19 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         tokenizer.save_pretrained(adapter_path)
         logger.info(f"LoRA adapter saved to {adapter_path}")
 
-        # Push to HuggingFace
+        # Push to HuggingFace — use upload_folder for reliable subfolder support
         hf_pushed = False
         if _hf_repo:
             try:
+                from huggingface_hub import HfApi
+                api = HfApi()
                 subfolder = f"{role}/step-{_global_step + 1}"
-                model.push_to_hub(_hf_repo, subfolder=subfolder)
-                tokenizer.push_to_hub(_hf_repo, subfolder=subfolder)
+                api.upload_folder(
+                    folder_path=adapter_path,
+                    repo_id=_hf_repo,
+                    path_in_repo=subfolder,
+                    commit_message=f"LoRA {role} step {_global_step + 1}",
+                )
                 logger.info(f"Pushed LoRA to HuggingFace: {_hf_repo}/{subfolder}")
                 hf_pushed = True
             except Exception as e:
