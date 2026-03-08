@@ -1,180 +1,226 @@
 """
-ART Training + Inference Worker for Office OS on Northflank H100.
+TRL GRPO Training Worker for Office OS on Northflank H100.
 
-Uses OpenPipe ART LocalBackend which manages its own internal vLLM.
-One process handles everything: inference AND training.
+Replaces ART with direct TRL + Unsloth for training.
+vLLM runs separately on port 8080 for inference.
 
 Architecture:
-  - ONE shared TrainableModel (each register() loads ~10GB, can't fit 7)
-  - All 7 roles train through the same model sequentially
-  - Role differentiation comes from system prompts in the trajectories
-  - Single LoRA adapter gets updated after each training step
-  - vLLM automatically loads the updated LoRA — no restart needed
+  - vLLM standalone on port 8080 (inference, LoRA hot-swap)
+  - This worker on port 8081 (accepts trajectories, runs GRPO, hot-loads LoRA)
+  - Unsloth for memory-efficient 4-bit QLoRA training
+  - After training, LoRA adapter is saved and hot-loaded into vLLM
 
 Usage:
+    # Terminal 1: vLLM inference
+    VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_server \\
+        --model Qwen/Qwen2.5-3B-Instruct --port 8080 --host 0.0.0.0 \\
+        --enable-lora --max-loras 2 --max-lora-rank 64 \\
+        --gpu-memory-utilization 0.4 --max-model-len 4096 --enforce-eager
+
+    # Terminal 2: Training worker
     python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-3B-Instruct
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import sys
-from datetime import datetime
+import gc
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any
-import threading
-
-# Force standard asyncio — fixes nest_asyncio/uvloop conflict
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-_backend = None
-_shared_model = None  # Single shared TrainableModel for all roles
 _base_model = "Qwen/Qwen2.5-3B-Instruct"
-_train_steps: dict[str, int] = {}  # Per-role training step counts
-_global_step: int = 0  # Global training step across all roles
-_inference_url: str = ""
+_train_steps: dict[str, int] = {}
+_global_step: int = 0
 _lock = threading.Lock()
+_vllm_url = "http://localhost:8080"  # vLLM inference server
+_lora_output_dir = "/tmp/office_os_lora"
 
 ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
 
-
-def _init_backend():
-    """Initialize ART LocalBackend — starts internal vLLM automatically."""
-    global _backend
-    if _backend is not None:
-        return True
-    try:
-        from art.local import LocalBackend
-        _backend = LocalBackend()
-        logger.info("ART LocalBackend initialized (manages internal vLLM)")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to init ART backend: {e}")
-        return False
+# Initialize step counters
+for role in ALL_ROLES:
+    _train_steps[role] = 0
 
 
-async def _init_shared_model():
-    """Register ONE shared model on startup. All roles train through this model."""
-    global _shared_model, _inference_url
-
-    if not _init_backend():
-        return
-
-    import art
-    _shared_model = art.TrainableModel(
-        name=f"office-os-shared-{datetime.now().strftime('%Y%m%d')}",
-        project="office-os",
-        base_model=_base_model,
-    )
-    await _shared_model.register(_backend)
-
-    # Capture ART's internal vLLM URL
-    if hasattr(_shared_model, 'inference_base_url') and _shared_model.inference_base_url:
-        _inference_url = _shared_model.inference_base_url
-        logger.info(f"ART vLLM inference URL: {_inference_url}")
-
-    # Initialize step counters for all roles
-    for role in ALL_ROLES:
-        _train_steps[role] = 0
-
-    logger.info(f"Shared model registered: {_shared_model.name}")
-    logger.info("All 7 roles train through this single model (differentiated by system prompts)")
-
-
-async def _train_role(role: str, base_model: str, learning_rate: float, trajectories_data: list) -> dict:
-    """Train a single role's data through the shared model. LoRA auto-loaded into vLLM."""
+def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 5e-6) -> dict:
+    """Train with TRL GRPO using Unsloth. Saves LoRA and hot-loads into vLLM."""
     global _global_step
+    import torch
 
-    if _backend is None:
-        if not _init_backend():
-            return {"status": "error", "role": role, "error": "Backend not available"}
-
-    if _shared_model is None:
-        return {"status": "error", "role": role, "error": "Shared model not initialized"}
-
-    import art
-
-    trajectories = []
-    for t in trajectories_data:
-        tool_call_content = json.dumps(t["assistant_response"])
-        traj = art.Trajectory(
-            messages_and_choices=[
-                {"role": "system", "content": t["system_prompt"]},
-                {"role": "user", "content": t["user_message"]},
-                {"role": "assistant", "content": None, "tool_calls": [{
-                    "id": f"call_{len(trajectories)}",
-                    "type": "function",
-                    "function": {
-                        "name": "submit_action",
-                        "arguments": tool_call_content,
-                    },
-                }]},
-            ],
-            reward=t["reward"],
-            metadata={"role": role},
-        )
-        trajectories.append(traj)
-
-    if not trajectories:
+    if not trajectories_data:
         return {"status": "skipped", "role": role, "trajectories_used": 0}
 
     try:
-        groups = [art.TrajectoryGroup(trajectories)]
-        result = await _backend.train(_shared_model, groups, learning_rate=learning_rate)
-        await _shared_model.log(groups, metrics=result.metrics, step=result.step, split="train")
+        from unsloth import FastLanguageModel
+        from trl import GRPOConfig, GRPOTrainer
+        from datasets import Dataset
 
-        _global_step = result.step
+        logger.info(f"Loading model for {role} training...")
+
+        # Load model with Unsloth 4-bit quantization
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=_base_model,
+            max_seq_length=1024,
+            load_in_4bit=True,
+        )
+
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=64,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                            "gate_proj", "up_proj", "down_proj"],
+            lora_alpha=64,
+            use_gradient_checkpointing="unsloth",
+            random_state=3407,
+        )
+
+        # Build dataset from trajectories
+        # Each trajectory has: system_prompt, user_message, assistant_response, reward
+        rows = []
+        rewards_list = []
+        for t in trajectories_data:
+            rows.append({
+                "prompt": [
+                    {"role": "system", "content": t["system_prompt"]},
+                    {"role": "user", "content": t["user_message"]},
+                ],
+                "expected_action": json.dumps(t["assistant_response"]),
+                "trajectory_reward": t["reward"],
+            })
+            rewards_list.append(t["reward"])
+
+        dataset = Dataset.from_list(rows)
+
+        # Reward function based on trajectory outcomes
+        def trajectory_reward_fn(completions, trajectory_reward, **kwargs) -> list[float]:
+            """Use the pre-computed reward from the simulation."""
+            return [float(r) for r in trajectory_reward]
+
+        # GRPO config — no vLLM integration (avoids known bugs)
+        output_dir = os.path.join(_lora_output_dir, role)
+        os.makedirs(output_dir, exist_ok=True)
+
+        training_args = GRPOConfig(
+            output_dir=output_dir,
+            use_vllm=False,
+            num_generations=4,
+            max_prompt_length=512,
+            max_completion_length=256,
+            temperature=0.7,
+            learning_rate=learning_rate,
+            per_device_train_batch_size=1,
+            gradient_accumulation_steps=4,
+            max_steps=min(50, len(rows)),  # Quick training for hackathon
+            bf16=True,
+            optim="adamw_8bit",
+            logging_steps=1,
+            save_steps=50,
+            report_to="none",
+        )
+
+        trainer = GRPOTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset,
+            reward_funcs=[trajectory_reward_fn],
+            tokenizer=tokenizer,
+        )
+
+        logger.info(f"Starting GRPO training for {role} ({len(rows)} trajectories)...")
+        trainer.train()
+
+        # Save LoRA adapter
+        adapter_path = os.path.join(output_dir, "adapter")
+        model.save_pretrained(adapter_path)
+        tokenizer.save_pretrained(adapter_path)
+        logger.info(f"LoRA adapter saved to {adapter_path}")
+
+        # Hot-load into vLLM
+        lora_name = f"office-os-{role}"
+        loaded = _hotload_lora(lora_name, adapter_path)
+
+        _global_step += 1
         _train_steps[role] = _train_steps.get(role, 0) + 1
 
-        # Get updated model name (includes LoRA) for inference
-        inference_name = _shared_model.get_inference_name()
+        # Free GPU memory
+        del model, trainer, tokenizer
+        gc.collect()
+        torch.cuda.empty_cache()
 
-        logger.info(f"Trained {role}: global_step={result.step}, role_step={_train_steps[role]}, trajs={len(trajectories)}, model={inference_name}")
         return {
             "status": "trained",
             "role": role,
-            "step": result.step,
+            "step": _global_step,
             "role_step": _train_steps[role],
-            "trajectories_used": len(trajectories),
-            "model_name": inference_name,
-            "inference_url": _inference_url,
-            "metrics": result.metrics,
+            "trajectories_used": len(rows),
+            "lora_loaded": loaded,
+            "model_name": lora_name if loaded else _base_model,
+            "adapter_path": adapter_path,
         }
+
     except Exception as e:
-        logger.error(f"Training failed for {role}: {e}")
+        logger.error(f"Training failed for {role}: {e}", exc_info=True)
+        # Free GPU memory on failure
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
         return {"status": "error", "role": role, "error": str(e)}
 
 
+def _hotload_lora(lora_name: str, adapter_path: str) -> bool:
+    """Hot-load a LoRA adapter into the running vLLM server."""
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "lora_name": lora_name,
+            "lora_path": adapter_path,
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{_vllm_url}/v1/load_lora_adapter",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = resp.read().decode()
+            logger.info(f"LoRA hot-loaded into vLLM: {lora_name} -> {result}")
+            return True
+    except Exception as e:
+        logger.warning(f"Failed to hot-load LoRA into vLLM: {e}")
+        logger.warning("vLLM will continue serving base model. Load manually later.")
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
-    """HTTP handler for training + inference proxy."""
+    """HTTP handler for training worker."""
 
     def do_GET(self):
         if self.path == "/health":
             self._json(200, {
                 "status": "ok",
-                "backend_ready": _backend is not None,
-                "model_ready": _shared_model is not None,
-                "inference_url": _inference_url,
+                "vllm_url": _vllm_url,
                 "global_step": _global_step,
                 "train_steps": _train_steps,
                 "base_model": _base_model,
+                "lora_output_dir": _lora_output_dir,
             })
         elif self.path == "/models":
             self._json(200, {
-                "shared_model": _shared_model.name if _shared_model else None,
                 "train_steps": _train_steps,
                 "global_step": _global_step,
                 "base_model": _base_model,
-                "inference_url": _inference_url,
             })
-        elif self.path.startswith("/v1/"):
-            self._proxy_to_vllm("GET")
         else:
             self._json(404, {"error": "Not found"})
 
@@ -193,47 +239,31 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "Missing 'role'"})
                 return
 
-            logger.info(f"Training {role}: {len(data.get('trajectories', []))} trajectories")
+            logger.info(f"Training request for {role}: {len(data.get('trajectories', []))} trajectories")
             with _lock:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    result = loop.run_until_complete(_train_role(
-                        role, data.get("base_model", _base_model),
-                        data.get("learning_rate", 1e-5),
-                        data.get("trajectories", []),
-                    ))
-                finally:
-                    loop.close()
+                result = _train_grpo(
+                    role,
+                    data.get("trajectories", []),
+                    data.get("learning_rate", 5e-6),
+                )
             self._json(200, result)
 
-        elif self.path.startswith("/v1/"):
-            self._proxy_to_vllm("POST", body)
+        elif self.path == "/hotload":
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self._json(400, {"error": "Invalid JSON"})
+                return
+            lora_name = data.get("lora_name", "")
+            adapter_path = data.get("adapter_path", "")
+            if not lora_name or not adapter_path:
+                self._json(400, {"error": "Missing lora_name or adapter_path"})
+                return
+            loaded = _hotload_lora(lora_name, adapter_path)
+            self._json(200, {"loaded": loaded, "lora_name": lora_name})
+
         else:
             self._json(404, {"error": "Not found"})
-
-    def _proxy_to_vllm(self, method: str, body: bytes = b""):
-        """Forward request to ART's internal vLLM."""
-        if not _inference_url:
-            self._json(503, {"error": "vLLM not ready yet. Call /health to check status."})
-            return
-
-        try:
-            import urllib.request
-            url = f"{_inference_url.rstrip('/')}{self.path}"
-            req = urllib.request.Request(
-                url, data=body if body else None, method=method,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                result = resp.read()
-                self.send_response(resp.status)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(result)
-        except Exception as e:
-            logger.error(f"Proxy error: {e}")
-            self._json(502, {"error": f"vLLM proxy failed: {e}"})
 
     def _json(self, code, data):
         self.send_response(code)
@@ -247,35 +277,27 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(description="ART Training + Inference Worker")
+    p = argparse.ArgumentParser(description="TRL GRPO Training Worker")
     p.add_argument("--port", type=int, default=8081)
     p.add_argument("--host", type=str, default="0.0.0.0")
     p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-3B-Instruct")
+    p.add_argument("--vllm-url", type=str, default="http://localhost:8080")
+    p.add_argument("--lora-dir", type=str, default="/tmp/office_os_lora")
     args = p.parse_args()
 
-    global _base_model
+    global _base_model, _vllm_url, _lora_output_dir
     _base_model = args.base_model
+    _vllm_url = args.vllm_url
+    _lora_output_dir = args.lora_dir
 
-    logger.info(f"ART Worker on {args.host}:{args.port}")
+    logger.info(f"TRL GRPO Training Worker on {args.host}:{args.port}")
     logger.info(f"Base model: {_base_model}")
-    logger.info(f"Shared model for all 7 roles (1 LoRA, trained with all role data)")
+    logger.info(f"vLLM server: {_vllm_url}")
+    logger.info(f"LoRA output: {_lora_output_dir}")
     logger.info(f"Endpoints:")
-    logger.info(f"  GET  /health              - Status + inference URL")
-    logger.info(f"  POST /train               - Train a role's data through shared model")
-    logger.info(f"  POST /v1/chat/completions - Inference (proxied to ART vLLM)")
-    logger.info(f"  GET  /v1/models           - List models")
-
-    # Initialize backend + register shared model
-    logger.info("Initializing ART backend and registering shared model...")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(_init_shared_model())
-    loop.close()
-
-    if _inference_url:
-        logger.info(f"ART vLLM ready at: {_inference_url}")
-    else:
-        logger.warning("ART vLLM not yet available. Will initialize on first /train request.")
+    logger.info(f"  GET  /health   - Status")
+    logger.info(f"  POST /train    - Train a role with GRPO")
+    logger.info(f"  POST /hotload  - Hot-load a LoRA into vLLM")
 
     server = HTTPServer((args.host, args.port), Handler)
     try:
