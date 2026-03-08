@@ -190,7 +190,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         # Load model with Unsloth 4-bit quantization
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=_base_model,
-            max_seq_length=1024,
+            max_seq_length=4096,
             load_in_4bit=True,
         )
 
@@ -345,8 +345,8 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             output_dir=output_dir,
             use_vllm=False,
             num_generations=8,           # More completions = more reward variance
-            max_prompt_length=512,
-            max_completion_length=256,
+            max_prompt_length=3072,
+            max_completion_length=1024,
             temperature=0.9,             # Higher temp = more diverse completions
             learning_rate=learning_rate,
             per_device_train_batch_size=1,
