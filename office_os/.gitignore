@@ -12,6 +12,9 @@ build/
 # Logs
 *.log
 
+# Training data (generated at runtime)
+training_data/
+
 # Credentials / secrets
 *.json
 !package.json
