@@ -46,7 +46,7 @@ VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_serv
     --enable-lora \
     --max-loras 8 \
     --max-lora-rank 32 \
-    --gpu-memory-utilization 0.4 \
+    --gpu-memory-utilization 0.6 \
     --max-model-len 4096 \
     --enforce-eager \
     > /tmp/vllm.log 2>&1 &
