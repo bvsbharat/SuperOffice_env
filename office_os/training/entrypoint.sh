@@ -3,7 +3,7 @@
 # Set as CMD override on Northflank to make all services persistent.
 
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
-REPO_DIR="/home/jovyan/openenv-hack-hackathon"
+REPO_DIR="/home/jovyan/SuperOffice_env"
 
 echo "=== Office OS Northflank Entrypoint ==="
 echo "Model: $BASE_MODEL"
