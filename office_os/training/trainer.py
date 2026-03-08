@@ -26,14 +26,13 @@ class RemoteTrainer:
     """
     Sends trajectories to the Northflank training worker for GRPO training.
 
-    Training happens every `train_every_days` simulation days using trajectories
+    Training happens after each full episode using trajectories
     collected by the TrajectoryCollector. Each role gets its own LoRA adapter.
 
     Usage:
         trainer = RemoteTrainer(
             collector=collector,
             base_model="Qwen/Qwen2.5-14B-Instruct",
-            train_every_days=3,
         )
         if trainer.should_train(current_day):
             await trainer.train_all_roles()
@@ -44,7 +43,7 @@ class RemoteTrainer:
         self,
         collector: TrajectoryCollector,
         base_model: str = "Qwen/Qwen2.5-14B-Instruct",
-        train_every_days: int = 3,
+        train_every_days: int = 999,  # Train after episode, not mid-episode
         min_trajectories: int = 10,
         northflank_endpoint: str = "",
         learning_rate: float = 2e-5,

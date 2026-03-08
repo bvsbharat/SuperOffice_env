@@ -282,7 +282,7 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
 
 
 def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
-                  speed: float = 0.5, train_every: int = 3,
+                  speed: float = 0.5, train_every: int = EPISODE_DAYS,
                   northflank_endpoint: str = "", scenario: str = "baseline"):
     """Run the simulation with a live terminal dashboard and remote training."""
     env = OfficeOsEnvironment(scenario=scenario)
@@ -536,8 +536,8 @@ def main():
     parser.add_argument("--speed", type=float, default=0.5, help="Seconds between turns (default: 0.5)")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
                         help="Model name on the vLLM endpoint")
-    parser.add_argument("--train-every", type=int, default=3,
-                        help="Train every N simulation days (default: 3)")
+    parser.add_argument("--train-every", type=int, default=EPISODE_DAYS,
+                        help=f"Train every N simulation days (default: {EPISODE_DAYS}, i.e. after episode)")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank inference endpoint URL")
     parser.add_argument("--northflank-train-endpoint", type=str, default="",
