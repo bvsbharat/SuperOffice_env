@@ -200,14 +200,20 @@ class ARTTrainer:
             return {"status": "error", "role": role, "error": str(e)}
 
     async def _train_remote(self, role: str, turns: list[TurnRecord]) -> dict:
-        """Send trajectories to Northflank training API for remote training."""
-        if not self.northflank_endpoint:
-            return {"status": "skipped", "role": role, "reason": "no Northflank endpoint configured"}
+        """Send trajectories to Northflank training worker for remote training."""
+        # Training worker runs on a separate port (default: 8081)
+        train_endpoint = os.environ.get("NORTHFLANK_TRAIN_ENDPOINT", "")
+        if not train_endpoint and self.northflank_endpoint:
+            # Derive training port: replace inference port with 8081
+            base = self.northflank_endpoint.rstrip("/")
+            train_endpoint = base  # Will hit /train on same endpoint if no separate one
+        if not train_endpoint:
+            return {"status": "skipped", "role": role, "reason": "no training endpoint configured"}
 
         try:
             import httpx
 
-            train_url = f"{self.northflank_endpoint.rstrip('/')}/train"
+            train_url = f"{train_endpoint.rstrip('/')}/train"
             payload = {
                 "role": role,
                 "base_model": self.base_model,

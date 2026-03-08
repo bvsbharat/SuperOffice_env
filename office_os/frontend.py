@@ -576,6 +576,8 @@ def main():
                         help="ART backend: serverless (W&B), local (Northflank GPU), disabled")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank vLLM inference endpoint URL")
+    parser.add_argument("--northflank-train-endpoint", type=str, default="",
+                        help="Northflank training worker endpoint URL (port 8081)")
     parser.add_argument("--northflank-api-key", type=str, default="",
                         help="Northflank API key for inference endpoint")
 
@@ -583,7 +585,10 @@ def main():
 
     # Resolve Northflank from env if not passed via CLI
     nf_endpoint = args.northflank_endpoint or os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", "")
+    nf_train_endpoint = args.northflank_train_endpoint or os.environ.get("NORTHFLANK_TRAIN_ENDPOINT", "")
     nf_api_key = args.northflank_api_key or os.environ.get("NORTHFLANK_API_KEY", "")
+    if nf_train_endpoint:
+        os.environ["NORTHFLANK_TRAIN_ENDPOINT"] = nf_train_endpoint
 
     # ART-only mode: use Northflank vLLM for all inference, no Claude needed
     if args.art_only:
