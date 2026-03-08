@@ -172,42 +172,61 @@ async def training_status():
 _RUBRIC_TEXT = """
 MULTI-AGENT GTM SIMULATION — REWARD FUNCTION DESIGN
 7 agents: CEO, Dev, Marketing, Sales, Content, HR, Customer
-Episode: 10 days, 14 turns/day (one agent acts per turn, sequential)
+Episode: 30 days, 14 turns/day (one agent acts per turn, sequential)
+Initial budget: $100,000 | Monthly refresh: $10,000
+
+PIPELINE STAGES: visitor -> lead -> qualified -> demo -> proposal -> negotiation -> closed_won | closed_lost | churned
 
 PIPELINE STAGE TRANSITION REWARDS (points per agent when a customer moves to that stage):
   visitor:     content +0.5
   lead:        content +1.0, marketing +1.5
   qualified:   sales +1.0, hr +0.3
-  demo:        sales +1.5, dev +0.5
+  demo:        sales +1.5, dev +1.0
   proposal:    sales +2.0
   closed_won:  sales +10.0, content +2.0, marketing +3.0, dev +2.0, ceo +5.0, hr +1.0, customer +2.0
-  closed_lost: sales -3.0, marketing -1.0, ceo -2.0
-  churned:     dev -5.0, sales -3.0, content -1.0, marketing -1.0, ceo -3.0, customer -5.0
-CONTRACT TIER MULTIPLIERS on closed_won: monthly ×1.0, 6-month ×2.0, annual ×3.0
+  closed_lost: sales -3.0, marketing -1.0, ceo -2.0, hr -0.5, content -0.5
+  churned:     dev -5.0, sales -3.0, content -2.0, marketing -1.0, ceo -3.0, customer -5.0, hr -1.0
+CONTRACT TIER MULTIPLIERS on closed_won: monthly x1.0, 6-month x2.0, annual x3.0
 
 DIRECT ACTION REWARDS (on successful execution):
-  dev:      SHIP_RELEASE +3.0, BUILD_FEATURE +0.5
-  content:  publish any piece +0.5
-  ceo:      SET_OKRS +1.0, SEND_DIRECTIVE +0.3
-  hr:       RESOLVE_BLOCKER +1.5, PLAN_SPRINT +0.5
-  customer: REFER_LEAD +2.0, RENEW_CONTRACT +3.0, EVALUATE_PRODUCT +0.3, GIVE_FEEDBACK +0.5
+  dev:       SHIP_RELEASE +3.0, BUILD_FEATURE +1.0 (ready to ship) / +0.5 (in progress),
+             FIX_BUG +0.8 (+0.5 empathy bonus for customer-reported bugs),
+             REFACTOR +0.5, WRITE_DOCS +0.3, REVIEW_PR +0.3
+  content:   publish any piece +0.3, writing progress +0.2
+  ceo:       SET_OKRS +1.0, SEND_DIRECTIVE +0.3
+  hr:        RESOLVE_BLOCKER +1.5, velocity boost +1.0, PLAN_SPRINT +0.5
+  sales:     FOLLOW_UP +0.3, COLLECT_FEEDBACK +0.5, UPDATE_SHEET +0.3
+  customer:  REFER_LEAD +1.0, RENEW_CONTRACT +1.5, EVALUATE_PRODUCT +0.3,
+             GIVE_FEEDBACK +0.5, ESCALATE_ISSUE +0.4, REQUEST_FEATURE +0.3
+  all:       base shaping reward +0.1 for any successful action (ensures GRPO gradient signal)
 
-KPI DELTA REWARDS (per-step KPI improvement):
-  website_traffic +1000: marketing/content +1.0, others +0.2
-  revenue +5000:         sales +2.0 (×2 multiplier), others +0.5
-  pipeline_value +10000: sales +1.0
+KPI DELTA REWARDS (per-step KPI improvement, with diminishing returns):
+  website_traffic:       min(delta/500, 1.0) for content/marketing; x0.2 for others
+                         content has diminishing returns after 5 published pieces
+  revenue:               min(delta/5000, 2.0); sales gets x2 multiplier; others x0.5
+  pipeline_value:        min(delta/10000, 1.0) for sales
+  product_stability:     min(delta*15, 1.5) for dev
+  customer_satisfaction: +delta*2.0 for ALL roles (empathy signal);
+                         -delta*1.5 penalty for dev/sales/ceo on drops
+  nps_score:             min(delta/20, 0.5) for all; -0.3 penalty for dev/sales/customer on drops >5
 
 COLLABORATION BONUSES (emergent cooperative reward):
-  content writes about a shipped feature:           +1.0 (collab with dev)
+  content writes about a shipped feature:            +1.0 (collab with dev)
   sales demos a lead with prior content touchpoints: +0.5 (collab with content)
   dev builds feature from customer feedback:         +1.0 (collab with sales/customer)
   marketing runs campaign with published content:    +0.5 (collab with content)
+  CHURN PREVENTION (when customer_satisfaction < 0.4):
+    dev FIX_BUG/REFACTOR:             +0.5
+    sales FOLLOW_UP/COLLECT_FEEDBACK:  +0.5
+    ceo REVIEW_STRATEGY/SEND_DIRECTIVE: +0.3
+    hr RESOLVE_BLOCKER:                +0.5
 
 PENALTIES:
   any agent: failed action -1.0
-  sales:     stale lead (>4 days no contact) -0.5 per lead
-  marketing: budget below $1,000 -0.5
   dev:       vaporware violation (content references unshipped feature) -5.0
+  sales:     stale lead (>4 days no contact) -0.5 per lead
+  sales:     Google Sheet not updated by end of day -1.0
+  marketing: budget below $1,000 -0.5
 
 GLOBAL REWARD = sum of all per-agent rewards across the episode
 """
