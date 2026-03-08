@@ -70,6 +70,7 @@ class ContentPiece:
     published: bool = False
     engagement: float = 0.0
     leads_generated: int = 0
+    turns_remaining: int = 0
 
 
 @dataclass
@@ -202,6 +203,8 @@ class MarketState:
     _customer_pool_index: int = 0
     _next_customer_day: int = 1
     _rng: random.Random = field(default_factory=lambda: random.Random())
+    _last_referral_day: int = 0
+    _renewed_customer_ids: dict = field(default_factory=dict)
 
     @classmethod
     def initial(cls, seed: int | None = None, scenario: str = "baseline") -> MarketState:

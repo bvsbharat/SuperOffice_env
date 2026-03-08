@@ -132,7 +132,7 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
 
     Model is configured via JUDGE_MODEL env var (auto-detected per provider if unset).
 
-    Returns a score from 0.0 to 1.0. Falls back to 0.5 on any error.
+    Returns a score from 0.0 to 1.0. Falls back to 0.25 on any error.
     """
     actions_str = ", ".join(valid_actions)
     judge_prompt = (
@@ -166,10 +166,10 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
             for ch in reply:
                 if ch.isdigit() and ch in "12345":
                     return (int(ch) - 1) / 4.0  # Normalize: 1->0.0, 5->1.0
-        return 0.5
+        return 0.25  # 2/5 = "poor", not neutral
     except Exception as e:
         logger.warning(f"LLM judge ({_judge_provider}) failed: {e}")
-        return 0.5  # Neutral on failure — don't block training
+        return 0.25  # 2/5 = "poor" on failure — don't reward bad outputs
 
 
 def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5) -> dict:

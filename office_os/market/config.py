@@ -20,11 +20,11 @@ STAGE_REWARDS: dict[str, dict[str, float]] = {
     "visitor": {"content": 0.5},
     "lead": {"content": 1.0, "marketing": 1.5},
     "qualified": {"sales": 1.0, "hr": 0.3},
-    "demo": {"sales": 1.5, "dev": 0.5},
+    "demo": {"sales": 1.5, "dev": 1.0},
     "proposal": {"sales": 2.0},
     "closed_won": {"sales": 10.0, "content": 2.0, "marketing": 3.0, "dev": 2.0, "ceo": 5.0, "hr": 1.0, "customer": 2.0},
-    "closed_lost": {"sales": -3.0, "marketing": -1.0, "ceo": -2.0},
-    "churned": {"dev": -5.0, "sales": -3.0, "content": -1.0, "marketing": -1.0, "ceo": -3.0, "customer": -5.0},
+    "closed_lost": {"sales": -3.0, "marketing": -1.0, "ceo": -2.0, "hr": -0.5, "content": -0.5},
+    "churned": {"dev": -5.0, "sales": -3.0, "content": -2.0, "marketing": -1.0, "ceo": -3.0, "customer": -5.0, "hr": -1.0},
 }
 
 AGENT_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr", "customer"]
@@ -136,6 +136,8 @@ class Config:
     # Content
     blog_write_turns: int = 3
     case_study_write_turns: int = 4
+    email_write_turns: int = 2
+    docs_write_turns: int = 2
 
     # Costs
     campaign_cost: float = 500.0

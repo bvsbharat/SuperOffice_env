@@ -65,14 +65,29 @@ class RewardCalculator:
             # Reward for shipping features
             if action == "SHIP_RELEASE" and "Shipped" in detail:
                 reward += 3.0
+            # Reward for completing a build
+            elif action == "BUILD_FEATURE" and "ready to ship" in detail:
+                reward += 1.0
             # Small reward for progressing a build
             elif action == "BUILD_FEATURE" and "remaining" in detail:
                 reward += 0.5
+            # Rewards for maintenance actions
+            elif action == "FIX_BUG":
+                reward += 0.8
+            elif action == "REFACTOR":
+                reward += 0.5
+            elif action == "WRITE_DOCS":
+                reward += 0.3
+            elif action == "REVIEW_PR":
+                reward += 0.3
 
         elif agent_id == "content":
-            # Reward for publishing content
+            # Reward for publishing content (multi-turn completion)
             if "Published" in detail:
-                reward += 0.5
+                reward += 0.3
+            # Small reward for making progress on content
+            elif "turns remaining" in detail or "Started writing" in detail:
+                reward += 0.2
 
         elif agent_id == "ceo":
             # Reward for setting OKRs and strategic actions
@@ -93,9 +108,9 @@ class RewardCalculator:
         elif agent_id == "customer":
             # Reward for useful engagement
             if action == "REFER_LEAD" and "New lead" in detail:
-                reward += 2.0
+                reward += 1.0
             elif action == "RENEW_CONTRACT" and "renewed" in detail:
-                reward += 3.0
+                reward += 1.5
             elif action == "EVALUATE_PRODUCT":
                 reward += 0.3
             elif action == "GIVE_FEEDBACK":
@@ -111,7 +126,13 @@ class RewardCalculator:
         traffic_delta = current["website_traffic"] - prev["website_traffic"]
         if traffic_delta > 0:
             r = min(traffic_delta / 500.0, 1.0)
-            if agent_id in ("marketing", "content"):
+            if agent_id == "content":
+                # Diminishing returns after 5 published pieces
+                published_count = current.get("content_published", 0)
+                if published_count > 5:
+                    r *= max(0.2, 1.0 - (published_count - 5) * 0.15)
+                reward += r
+            elif agent_id == "marketing":
                 reward += r
             else:
                 reward += r * 0.2  # Everyone benefits a little
@@ -131,6 +152,12 @@ class RewardCalculator:
             if agent_id == "sales":
                 reward += min(pipe_delta / 10000.0, 1.0)
 
+        # Stability improvement reward for dev
+        if agent_id == "dev":
+            stability_delta = current.get("product_stability", 0) - prev.get("product_stability", 0)
+            if stability_delta > 0:
+                reward += min(stability_delta * 15.0, 1.5)
+
         return reward
 
     def _collaboration_bonus(self, state: MarketState, agent_id: str, action_result: dict) -> float:
@@ -140,8 +167,14 @@ class RewardCalculator:
 
         if agent_id == "content":
             # Content writing about a shipped feature = collaboration with Dev
-            if any(f.name.lower() in detail.lower() for f in state.shipped_features()):
-                bonus += 1.0
+            # Requires explicit "feature" parameter matching a shipped feature name
+            feature_param = action_result.get("parameters", {})
+            if isinstance(feature_param, dict):
+                ref_feature = feature_param.get("feature", "")
+                if ref_feature:
+                    shipped_names = [f.name.lower() for f in state.shipped_features()]
+                    if ref_feature.lower() in shipped_names:
+                        bonus += 1.0
 
         if agent_id == "sales":
             # Sales using content in a demo = collaboration with Content
