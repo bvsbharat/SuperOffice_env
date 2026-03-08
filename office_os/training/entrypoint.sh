@@ -2,14 +2,17 @@
 # Northflank container entrypoint — starts vLLM + training worker + Jupyter.
 # Set as CMD override on Northflank to make all services persistent.
 
-set -e
-
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
+REPO_DIR="/home/jovyan/openenv-hack-hackathon"
 
 echo "=== Office OS Northflank Entrypoint ==="
 echo "Model: $BASE_MODEL"
 echo "HF_REPO: ${HF_REPO:-not set}"
 echo "WANDB_PROJECT: ${WANDB_PROJECT:-not set}"
+
+# ── Update repo ───────────────────────────────────────────────────
+cd "$REPO_DIR" && git pull || true
+cd "$REPO_DIR/office_os"
 
 # ── Install deps (cached after first run if volume mounted) ───────
 pip install -q "trl>=0.12" "datasets>=3.0" "peft>=0.13" "accelerate>=1.0" "bitsandbytes>=0.44"
@@ -64,10 +67,10 @@ for i in $(seq 1 120); do
 done
 
 # ── Start training worker (background) ────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TRAIN_SCRIPT="$REPO_DIR/office_os/training/train_worker.py"
 echo ">> Starting training worker on port 8081..."
 
-TRAIN_CMD="python $SCRIPT_DIR/train_worker.py --port 8081 --host 0.0.0.0 --base-model $BASE_MODEL --vllm-url http://localhost:8080"
+TRAIN_CMD="python $TRAIN_SCRIPT --port 8081 --host 0.0.0.0 --base-model $BASE_MODEL --vllm-url http://localhost:8080"
 [ -n "$HF_REPO" ] && TRAIN_CMD="$TRAIN_CMD --hf-repo $HF_REPO"
 [ -n "$WANDB_PROJECT" ] && TRAIN_CMD="$TRAIN_CMD --wandb-project $WANDB_PROJECT"
 
