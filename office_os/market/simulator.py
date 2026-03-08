@@ -249,12 +249,41 @@ class MarketSimulator:
 
     # ── Sales actions ────────────────────────────────────────────
 
+    def _find_customer(self, target: str) -> Customer | None:
+        """Find a customer by ID or name with fuzzy matching."""
+        if not target:
+            return None
+        # Exact match first (ID or name)
+        for c in self.state.customers:
+            if c.id == target or c.name == target:
+                return c
+        # Case-insensitive match
+        target_lower = target.strip().lower()
+        for c in self.state.customers:
+            if c.name.lower() == target_lower:
+                return c
+        # Partial / fuzzy match — target is a substring of the name or vice versa
+        for c in self.state.customers:
+            name_lower = c.name.lower()
+            if target_lower in name_lower or name_lower in target_lower:
+                return c
+        # Word overlap match (e.g., "Acme" matches "Acme Corp")
+        target_words = set(target_lower.split())
+        for c in self.state.customers:
+            name_words = set(c.name.lower().split())
+            if target_words & name_words:
+                return c
+        return None
+
     def _handle_sales(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
-        customer = next((c for c in self.state.customers if c.id == target or c.name == target), None)
+        customer = self._find_customer(target)
 
         if action_type in ("QUALIFY_LEAD", "RUN_DEMO", "SEND_PROPOSAL", "CLOSE_DEAL", "FOLLOW_UP") and not customer:
+            # Try to find closest match and suggest it
+            active = [c for c in self.state.customers if c.stage not in ("closed_won", "closed_lost", "churned")]
+            hint = f" Active customers: {[c.name for c in active]}" if active else ""
             result["success"] = False
-            result["detail"] = f"Customer '{target}' not found"
+            result["detail"] = f"Customer '{target}' not found.{hint}"
             return result
 
         if action_type == "QUALIFY_LEAD":
@@ -333,7 +362,7 @@ class MarketSimulator:
 
         # Close probability based on shipped features + content + satisfaction
         # Longer contracts are harder to close
-        base_prob = 0.4 - (tier["months"] - 1) * 0.015
+        base_prob = 0.5 - (tier["months"] - 1) * 0.015
         shipped = self.state.shipped_features()
         if shipped:
             # More shipped features = higher close probability (up to +0.3)
@@ -342,30 +371,38 @@ class MarketSimulator:
             base_prob += 0.1 * min(len(customer.content_touchpoints), 3)
         # Customer satisfaction affects willingness to buy
         if self.state.customer_satisfaction < 0.4:
-            base_prob -= 0.15
+            base_prob -= 0.1
         elif self.state.customer_satisfaction > 0.7:
             base_prob += 0.1
         # Unresolved objections reduce close probability
         if customer.objections:
             base_prob -= 0.05 * len(customer.objections)
-        # Low stability makes enterprise customers cautious
+        # Low stability makes enterprise customers cautious (reduced penalty)
         if self.state.product_stability < 0.6 and customer.company_size == "enterprise":
-            base_prob -= 0.2
-        base_prob = max(0.05, min(0.9, base_prob))  # Clamp to [5%, 90%]
+            base_prob -= 0.1
+        # Negotiation attempts make closing harder but not impossible
+        if customer.negotiation_attempts > 0:
+            base_prob -= 0.1 * customer.negotiation_attempts
+        # Startups close faster
+        if customer.company_size == "startup":
+            base_prob += 0.1
+        base_prob = max(0.1, min(0.9, base_prob))  # Clamp to [10%, 90%]
 
         if self.state._rng.random() < base_prob:
             customer.previous_stage = customer.stage
             customer.stage = "closed_won"
             customer.contract_tier = tier_key
+            customer.closed_day = self.state.day
             customer.last_contacted_day = self.state.day
             self.state._stage_transitions.append(customer)
-            contract_revenue = (customer.budget / 12) * tier["months"]
-            self.state.revenue += contract_revenue
-            self.state.total_revenue += contract_revenue
-            result["detail"] = f"CLOSED {customer.name}! {tier['label']} contract: ${contract_revenue:,.0f}"
+            # Signing bonus = first month's revenue upfront
+            signing_revenue = customer.budget / 12
+            self.state.revenue += signing_revenue
+            self.state.total_revenue += signing_revenue
+            result["detail"] = f"CLOSED {customer.name}! {tier['label']} contract: ${customer.budget:,.0f}/yr (${signing_revenue:,.0f} signing + MRR)"
             result["contract_tier"] = tier_key
         else:
-            # Move to negotiation or lose
+            # Move to negotiation; allow multiple attempts before losing
             if customer.stage == "proposal":
                 customer.previous_stage = customer.stage
                 customer.stage = "negotiation"
@@ -373,11 +410,16 @@ class MarketSimulator:
                 self.state._stage_transitions.append(customer)
                 result["detail"] = f"{customer.name} wants to negotiate"
             else:
-                customer.previous_stage = customer.stage
-                customer.stage = "closed_lost"
-                self.state._stage_transitions.append(customer)
-                result["detail"] = f"Lost {customer.name} -- deal fell through"
-                result["success"] = False
+                customer.negotiation_attempts += 1
+                if customer.negotiation_attempts >= 3:
+                    customer.previous_stage = customer.stage
+                    customer.stage = "closed_lost"
+                    self.state._stage_transitions.append(customer)
+                    result["detail"] = f"Lost {customer.name} -- deal fell through after {customer.negotiation_attempts} attempts"
+                    result["success"] = False
+                else:
+                    customer.last_contacted_day = self.state.day
+                    result["detail"] = f"{customer.name} still negotiating (attempt {customer.negotiation_attempts}/3, try again or adjust terms)"
         return result
 
     # ── Content actions ──────────────────────────────────────────

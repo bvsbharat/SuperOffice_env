@@ -42,6 +42,7 @@ SCENARIOS: dict[str, Scenario] = {
     "baseline": Scenario(
         name="Baseline GTM Launch",
         description="Standard go-to-market. Market is receptive, competition is low. Agents follow standard playbooks.",
+        initial_leads=3,
     ),
 
     "competitor": Scenario(

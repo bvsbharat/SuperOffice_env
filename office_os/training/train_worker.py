@@ -477,6 +477,8 @@ class Handler(BaseHTTPRequestHandler):
                 "lora_output_dir": _lora_output_dir,
                 "judge_provider": _judge_provider,
                 "judge_model": _get_judge_model(),
+                "wandb_project": _wandb_project or "(not set)",
+                "hf_repo": _hf_repo or "(not set)",
             })
         elif self.path == "/models":
             self._json(200, {
@@ -505,6 +507,17 @@ class Handler(BaseHTTPRequestHandler):
             if role in SKIP_TRAINING:
                 self._json(200, {"status": "skipped", "role": role, "reason": "no training needed"})
                 return
+
+            # Allow per-request overrides for wandb/HF (avoids worker restart)
+            global _wandb_project, _hf_repo
+            req_wandb = data.get("wandb_project", "")
+            req_hf = data.get("hf_repo", "")
+            if req_wandb:
+                _wandb_project = req_wandb
+                logger.info(f"W&B project set via request: {_wandb_project}")
+            if req_hf:
+                _hf_repo = req_hf
+                logger.info(f"HF repo set via request: {_hf_repo}")
 
             logger.info(f"Training request for {role}: {len(data.get('trajectories', []))} trajectories")
             with _lock:

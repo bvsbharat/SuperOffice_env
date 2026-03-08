@@ -12,7 +12,6 @@ import logging
 import os
 from typing import Optional
 
-import tiktoken
 from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
@@ -20,16 +19,7 @@ from .prompts import ROLE_PROMPTS
 
 logger = logging.getLogger(__name__)
 
-# Token counting — cl100k_base approximates Qwen well enough
-_enc = tiktoken.get_encoding("cl100k_base")
-
-# vLLM context budget: 4096 total - 512 output - 50 safety margin
-_MAX_INPUT_TOKENS = 3534
 _OUTPUT_TOKENS = 512
-
-
-def _count_tokens(text: str) -> int:
-    return len(_enc.encode(text))
 
 
 # ── Structured output models ─────────────────────────────────────────
@@ -49,11 +39,13 @@ class ReflectionOutput(BaseModel):
 
 
 def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
-    """Lazy-load the Anthropic client."""
+    """Lazy-load the Anthropic client (direct API or Bedrock)."""
     try:
         import anthropic
     except ImportError:
         raise ImportError("anthropic is required. Install with: pip install anthropic")
+    if provider == "bedrock":
+        return anthropic.AnthropicBedrock(aws_region=aws_region)
     return anthropic.Anthropic()
 
 
@@ -77,12 +69,22 @@ class LLMAgent:
       - Claude (Anthropic): default if no vLLM endpoint set
     """
 
+    # Bedrock model ID mapping
+    BEDROCK_MODELS = {
+        "claude-sonnet-4-20250514": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    }
+
     def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
                  provider: str = "anthropic", aws_region: str = "us-east-1"):
         self.role = role
-        self.model = model
         self.provider = provider
         self.aws_region = aws_region
+        # Resolve Bedrock model ID if needed
+        if provider == "bedrock":
+            self.model = self.BEDROCK_MODELS.get(model, model)
+        else:
+            self.model = model
         self.base = BaseAgent(role=role)
         self.system_prompt = ROLE_PROMPTS[role]
         self._client = None
@@ -177,10 +179,7 @@ class LLMAgent:
         return result
 
     def _call_vllm(self, user_msg: str, rejected_actions: list[str] | None = None) -> AgentAction:
-        """Call vLLM model via OpenAI-compatible endpoint.
-
-        Uses token-aware priority pruning to fit within the 4096 context window.
-        """
+        """Call vLLM model via OpenAI-compatible endpoint."""
         actions_list = "\n".join(f"  - {a}" for a in self._allowed_actions)
         json_instruction = (
             f"\n\n## CRITICAL INSTRUCTIONS\n"
@@ -200,16 +199,13 @@ class LLMAgent:
             )
 
         system_content = self.system_prompt + json_instruction
-        system_tokens = _count_tokens(system_content)
-        user_budget = _MAX_INPUT_TOKENS - system_tokens
 
-        # Prune user message to fit budget
-        user_msg = self._prune_to_budget(user_msg, user_budget)
-
+        import random as _random
         response = self.openai_client.chat.completions.create(
             model=self._vllm_endpoint["model_name"],
             max_tokens=_OUTPUT_TOKENS,
             temperature=0.7,
+            seed=_random.randint(0, 2**31),
             messages=[
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": user_msg},
@@ -218,114 +214,6 @@ class LLMAgent:
 
         text = response.choices[0].message.content or ""
         return self._parse_text_response(text)
-
-    def _prune_to_budget(self, user_msg: str, token_budget: int) -> str:
-        """Token-aware priority pruning.
-
-        Sections are built in priority order (highest first). If the full
-        message exceeds the budget, lowest-priority sections are dropped
-        one at a time until it fits.
-
-        Priority (high to low):
-          P0: header + KPIs + budget + role-specific context (pipeline/features)
-          P1: shared team memory (last 3 entries)
-          P2: team messages (last 3)
-          P3: active events
-          P4: recent team actions (last 3)
-          P5: role data (compact JSON)
-          P6: current plan
-          P7: reflections
-          P8: call to action
-        """
-        current_tokens = _count_tokens(user_msg)
-        if current_tokens <= token_budget:
-            return user_msg
-
-        logger.info(f"{self.role}: pruning {current_tokens} -> {token_budget} tokens")
-
-        # Split into sections by "## " headers. Keep the header block (P0)
-        # which has no "## " prefix, then each "## " section.
-        lines = user_msg.split("\n")
-        sections: list[tuple[int, str]] = []  # (priority, text)
-
-        current_section_lines: list[str] = []
-        current_priority = 0  # header block = P0
-
-        # Priority map by section header keyword
-        priority_map = {
-            "Your KPIs": 0,
-            "PIPELINE STATUS": 0,
-            "URGENT": 0,
-            "Currently building": 0,
-            "SHIPPED FEATURES": 0,
-            "NO SHIPPED FEATURES": 0,
-            "SHARED TEAM MEMORY": 1,
-            "Team channel": 2,
-            "Active Events": 3,
-            "Recent team actions": 4,
-            "Your role data": 5,
-            "Your current plan": 6,
-            "Your recent reflections": 7,
-            "ALLOWED ACTIONS": 8,
-        }
-
-        def _get_priority(line: str) -> int | None:
-            for keyword, pri in priority_map.items():
-                if keyword in line:
-                    return pri
-            return None
-
-        for line in lines:
-            if line.startswith("## ") or line.startswith(">> ") or line.startswith("!! "):
-                # Save previous section
-                if current_section_lines:
-                    sections.append((current_priority, "\n".join(current_section_lines)))
-                current_section_lines = [line]
-                p = _get_priority(line)
-                current_priority = p if p is not None else 5
-            else:
-                current_section_lines.append(line)
-
-        # Save last section
-        if current_section_lines:
-            sections.append((current_priority, "\n".join(current_section_lines)))
-
-        # Drop sections from lowest priority (highest number) until we fit
-        sections_sorted_by_drop_order = sorted(
-            range(len(sections)),
-            key=lambda i: -sections[i][0],  # highest priority number = drop first
-        )
-
-        dropped = set()
-        for idx in sections_sorted_by_drop_order:
-            assembled = "\n".join(
-                sections[i][1] for i in range(len(sections)) if i not in dropped
-            )
-            if _count_tokens(assembled) <= token_budget:
-                return assembled
-            dropped.add(idx)
-            # Never drop P0 sections (KPIs, pipeline, header)
-            if sections[idx][0] <= 0:
-                dropped.discard(idx)
-                break
-
-        # If still over budget after dropping everything droppable, hard truncate
-        assembled = "\n".join(
-            sections[i][1] for i in range(len(sections)) if i not in dropped
-        )
-        tokens = _count_tokens(assembled)
-        if tokens > token_budget:
-            # Binary search for the right character cutoff
-            lo, hi = 0, len(assembled)
-            while lo < hi:
-                mid = (lo + hi + 1) // 2
-                if _count_tokens(assembled[:mid]) <= token_budget:
-                    lo = mid
-                else:
-                    hi = mid - 1
-            assembled = assembled[:lo]
-
-        return assembled
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call Claude and parse response into a validated AgentAction."""
@@ -438,11 +326,7 @@ class LLMAgent:
             logger.debug(f"Reflection failed for {self.role}: {e}")
 
     def _build_user_message(self, obs: dict, turn: int) -> str:
-        """Build the context message sent to the LLM.
-
-        Sections are ordered by priority so _prune_to_budget knows what to
-        drop first (it drops from the bottom up by section priority number).
-        """
+        """Build the context message sent to the LLM."""
         context = self.base.get_context(turn)
         role_data = obs.get("role_data", {})
 
@@ -466,17 +350,42 @@ class LLMAgent:
                 parts.append("")
             elif in_progress:
                 building = in_progress[0]
-                parts.append(f">> Currently building: {building['name']} ({building['turns_remaining']} turns left)")
+                parts.append(f">> Currently building: {building['name']} — use BUILD_FEATURE target=\"{building['name']}\" to continue ({building['turns_remaining']} turns left)")
+                parts.append("")
+            else:
+                # Nothing in progress — guide toward backlog
+                backlog = role_data.get("backlog", [])
+                bug_reports = role_data.get("bug_reports", [])
+                parts.append(">> NO features in progress. Do NOT use SHIP_RELEASE (nothing to ship).")
+                if bug_reports:
+                    bug = bug_reports[0]
+                    parts.append(f">> SUGGESTED: FIX_BUG target=\"{bug.get('name', bug.get('id', 'unknown'))}\"")
+                elif backlog:
+                    item = backlog[0]
+                    parts.append(f">> SUGGESTED: BUILD_FEATURE target=\"{item['name']}\"")
+                else:
+                    parts.append(">> SUGGESTED: REFACTOR (no backlog items)")
                 parts.append("")
         elif self.role == "sales":
             pipeline = role_data.get("pipeline", [])
             if pipeline:
-                parts.append(">> PIPELINE STATUS:")
-                for c in pipeline[:8]:  # Cap at 8 customers
-                    parts.append(f"   {c['name']}: stage={c['stage']}, budget=${c.get('budget', 0):,.0f}, days_since_contact={c.get('days_since_contact', 0)}")
+                # Show each customer with their exact name and the next action to take
+                stage_to_action = {
+                    "lead": "QUALIFY_LEAD",
+                    "qualified": "RUN_DEMO",
+                    "demo": "SEND_PROPOSAL",
+                    "proposal": "CLOSE_DEAL",
+                    "negotiation": "CLOSE_DEAL",
+                }
+                parts.append(">> PIPELINE — use the EXACT customer name as target:")
+                for c in pipeline[:8]:
+                    stage = c['stage']
+                    next_action = stage_to_action.get(stage, "FOLLOW_UP")
+                    stale_warn = " ⚠️STALE" if c.get('days_since_contact', 0) > 3 else ""
+                    parts.append(f'   "{c["name"]}" stage={stage} → use {next_action} target="{c["name"]}"{stale_warn}')
                 parts.append("")
             else:
-                parts.append(">> Pipeline is empty. Use COLLECT_FEEDBACK while waiting for leads.")
+                parts.append(">> Pipeline is empty. Use COLLECT_FEEDBACK or UPDATE_SHEET while waiting for leads.")
                 parts.append("")
         elif self.role == "content":
             team_status = role_data.get("team_status", {})
