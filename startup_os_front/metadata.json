@@ -1,0 +1,5 @@
+{
+  "name": "startup_os_front",
+  "description": "A Minecraft-styled reinforcement learning simulation for startup go-to-market strategies.",
+  "requestFramePermissions": []
+}
