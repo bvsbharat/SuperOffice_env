@@ -12,12 +12,24 @@ import logging
 import os
 from typing import Optional
 
+import tiktoken
 from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
 from .prompts import ROLE_PROMPTS
 
 logger = logging.getLogger(__name__)
+
+# Token counting — cl100k_base approximates Qwen well enough
+_enc = tiktoken.get_encoding("cl100k_base")
+
+# vLLM context budget: 4096 total - 512 output - 50 safety margin
+_MAX_INPUT_TOKENS = 3534
+_OUTPUT_TOKENS = 512
+
+
+def _count_tokens(text: str) -> int:
+    return len(_enc.encode(text))
 
 
 # ── Structured output models ─────────────────────────────────────────
@@ -145,12 +157,6 @@ class LLMAgent:
                     continue
                 break
             except Exception as e:
-                err_str = str(e)
-                # On context length error, aggressively truncate and retry immediately
-                if "context length" in err_str or "input_tokens" in err_str:
-                    user_msg = user_msg[:len(user_msg) // 2] + "\n[truncated]"
-                    logger.warning(f"{self.role}: context too long, truncating to {len(user_msg)} chars")
-                    continue
                 logger.warning(f"{mode} attempt {attempt+1}/{max_attempts} for {self.role}: {type(e).__name__}: {e}")
                 if attempt < max_attempts - 1:
                     import time
@@ -173,9 +179,7 @@ class LLMAgent:
     def _call_vllm(self, user_msg: str, rejected_actions: list[str] | None = None) -> AgentAction:
         """Call vLLM model via OpenAI-compatible endpoint.
 
-        Uses plain JSON prompting (no tools/function-calling) for maximum
-        compatibility with vLLM + Qwen models. Includes strong role constraints
-        to prevent the small model from picking actions from other roles.
+        Uses token-aware priority pruning to fit within the 4096 context window.
         """
         actions_list = "\n".join(f"  - {a}" for a in self._allowed_actions)
         json_instruction = (
@@ -196,19 +200,15 @@ class LLMAgent:
             )
 
         system_content = self.system_prompt + json_instruction
+        system_tokens = _count_tokens(system_content)
+        user_budget = _MAX_INPUT_TOKENS - system_tokens
 
-        # Truncate user message to fit within context window
-        # 4096 tokens - 512 output = 3584 input tokens
-        # Use ~2.5 chars/token (conservative for Qwen tokenizer)
-        system_tokens_est = len(system_content) / 2.5
-        max_user_tokens = 3584 - system_tokens_est - 50  # 50 token safety margin
-        max_user_chars = max(1500, int(max_user_tokens * 2.5))
-        if len(user_msg) > max_user_chars:
-            user_msg = user_msg[:max_user_chars] + "\n[truncated]"
+        # Prune user message to fit budget
+        user_msg = self._prune_to_budget(user_msg, user_budget)
 
         response = self.openai_client.chat.completions.create(
             model=self._vllm_endpoint["model_name"],
-            max_tokens=512,
+            max_tokens=_OUTPUT_TOKENS,
             temperature=0.7,
             messages=[
                 {"role": "system", "content": system_content},
@@ -218,6 +218,114 @@ class LLMAgent:
 
         text = response.choices[0].message.content or ""
         return self._parse_text_response(text)
+
+    def _prune_to_budget(self, user_msg: str, token_budget: int) -> str:
+        """Token-aware priority pruning.
+
+        Sections are built in priority order (highest first). If the full
+        message exceeds the budget, lowest-priority sections are dropped
+        one at a time until it fits.
+
+        Priority (high to low):
+          P0: header + KPIs + budget + role-specific context (pipeline/features)
+          P1: shared team memory (last 3 entries)
+          P2: team messages (last 3)
+          P3: active events
+          P4: recent team actions (last 3)
+          P5: role data (compact JSON)
+          P6: current plan
+          P7: reflections
+          P8: call to action
+        """
+        current_tokens = _count_tokens(user_msg)
+        if current_tokens <= token_budget:
+            return user_msg
+
+        logger.info(f"{self.role}: pruning {current_tokens} -> {token_budget} tokens")
+
+        # Split into sections by "## " headers. Keep the header block (P0)
+        # which has no "## " prefix, then each "## " section.
+        lines = user_msg.split("\n")
+        sections: list[tuple[int, str]] = []  # (priority, text)
+
+        current_section_lines: list[str] = []
+        current_priority = 0  # header block = P0
+
+        # Priority map by section header keyword
+        priority_map = {
+            "Your KPIs": 0,
+            "PIPELINE STATUS": 0,
+            "URGENT": 0,
+            "Currently building": 0,
+            "SHIPPED FEATURES": 0,
+            "NO SHIPPED FEATURES": 0,
+            "SHARED TEAM MEMORY": 1,
+            "Team channel": 2,
+            "Active Events": 3,
+            "Recent team actions": 4,
+            "Your role data": 5,
+            "Your current plan": 6,
+            "Your recent reflections": 7,
+            "ALLOWED ACTIONS": 8,
+        }
+
+        def _get_priority(line: str) -> int | None:
+            for keyword, pri in priority_map.items():
+                if keyword in line:
+                    return pri
+            return None
+
+        for line in lines:
+            if line.startswith("## ") or line.startswith(">> ") or line.startswith("!! "):
+                # Save previous section
+                if current_section_lines:
+                    sections.append((current_priority, "\n".join(current_section_lines)))
+                current_section_lines = [line]
+                p = _get_priority(line)
+                current_priority = p if p is not None else 5
+            else:
+                current_section_lines.append(line)
+
+        # Save last section
+        if current_section_lines:
+            sections.append((current_priority, "\n".join(current_section_lines)))
+
+        # Drop sections from lowest priority (highest number) until we fit
+        sections_sorted_by_drop_order = sorted(
+            range(len(sections)),
+            key=lambda i: -sections[i][0],  # highest priority number = drop first
+        )
+
+        dropped = set()
+        for idx in sections_sorted_by_drop_order:
+            assembled = "\n".join(
+                sections[i][1] for i in range(len(sections)) if i not in dropped
+            )
+            if _count_tokens(assembled) <= token_budget:
+                return assembled
+            dropped.add(idx)
+            # Never drop P0 sections (KPIs, pipeline, header)
+            if sections[idx][0] <= 0:
+                dropped.discard(idx)
+                break
+
+        # If still over budget after dropping everything droppable, hard truncate
+        assembled = "\n".join(
+            sections[i][1] for i in range(len(sections)) if i not in dropped
+        )
+        tokens = _count_tokens(assembled)
+        if tokens > token_budget:
+            # Binary search for the right character cutoff
+            lo, hi = 0, len(assembled)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if _count_tokens(assembled[:mid]) <= token_budget:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            assembled = assembled[:lo]
+
+        return assembled
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call Claude and parse response into a validated AgentAction."""
@@ -330,10 +438,15 @@ class LLMAgent:
             logger.debug(f"Reflection failed for {self.role}: {e}")
 
     def _build_user_message(self, obs: dict, turn: int) -> str:
-        """Build the context message sent to the LLM."""
+        """Build the context message sent to the LLM.
+
+        Sections are ordered by priority so _prune_to_budget knows what to
+        drop first (it drops from the bottom up by section priority number).
+        """
         context = self.base.get_context(turn)
         role_data = obs.get("role_data", {})
 
+        # ── P0: Header + KPIs (never dropped) ────────────────────────
         parts = [
             f"=== Day {obs.get('day', '?')} | Phase: {obs.get('phase', '?')} | Turn {turn} ===",
             "",
@@ -344,6 +457,7 @@ class LLMAgent:
             "",
         ]
 
+        # ── P0: Role-specific critical context (never dropped) ────────
         if self.role == "dev":
             in_progress = role_data.get("features_in_progress", [])
             ready = [f for f in in_progress if f.get("turns_remaining", 99) <= 0]
@@ -358,7 +472,7 @@ class LLMAgent:
             pipeline = role_data.get("pipeline", [])
             if pipeline:
                 parts.append(">> PIPELINE STATUS:")
-                for c in pipeline:
+                for c in pipeline[:8]:  # Cap at 8 customers
                     parts.append(f"   {c['name']}: stage={c['stage']}, budget=${c.get('budget', 0):,.0f}, days_since_contact={c.get('days_since_contact', 0)}")
                 parts.append("")
             else:
@@ -373,20 +487,23 @@ class LLMAgent:
                 parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
 
+        # ── P1: Shared team memory (last 3) ───────────────────────────
         shared_mem = role_data.pop("shared_memory", [])
         if shared_mem:
             parts.append("## SHARED TEAM MEMORY (all agents see this)")
-            for entry in shared_mem[-5:]:
+            for entry in shared_mem[-3:]:
                 parts.append(f"  [{entry.get('author', '?')}] ({entry.get('type', '?')}) {entry.get('content', '')}")
             parts.append("")
 
+        # ── P2: Team messages (last 3) ────────────────────────────────
         messages = obs.get("messages", [])
         if messages:
             parts.append("## Team channel (recent messages)")
-            for m in messages[-5:]:
+            for m in messages[-3:]:
                 parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
             parts.append("")
 
+        # ── P3: Active events ─────────────────────────────────────────
         events = obs.get("events", [])
         if events:
             parts.append("## Active Events")
@@ -394,45 +511,45 @@ class LLMAgent:
                 parts.append(f"  - {e.get('name', '?')}: {e.get('description', '')}")
             parts.append("")
 
+        # ── P4: Recent team actions (last 3) ──────────────────────────
         recent = obs.get("recent_actions", [])
         if recent:
             parts.append("## Recent team actions")
-            for a in recent[-5:]:
+            for a in recent[-3:]:
                 parts.append(f"  [{a.get('agent_id')}] {a.get('action_type')} -> {a.get('detail', '')}")
             parts.append("")
 
+        # ── P5: Role data (compact) ───────────────────────────────────
         if role_data:
-            # Compact role data to save tokens — skip large nested objects
             compact = {}
             for k, v in role_data.items():
-                if isinstance(v, list) and len(v) > 5:
-                    compact[k] = v[:5]  # Limit lists to 5 items
-                elif isinstance(v, str) and len(v) > 200:
-                    compact[k] = v[:200]
+                if isinstance(v, list) and len(v) > 3:
+                    compact[k] = v[:3]
+                elif isinstance(v, str) and len(v) > 150:
+                    compact[k] = v[:150]
                 else:
                     compact[k] = v
             role_str = json.dumps(compact, indent=1, default=str)
-            if len(role_str) > 1500:
-                role_str = role_str[:1500] + "..."
+            if len(role_str) > 800:
+                role_str = role_str[:800] + "..."
             parts.append("## Your role data")
             parts.append(role_str)
             parts.append("")
 
+        # ── P6: Current plan ──────────────────────────────────────────
         if context.get("current_plan"):
             parts.append(f"## Your current plan: {context['current_plan']}")
+
+        # ── P7: Reflections ───────────────────────────────────────────
         reflections = context.get("recent_reflections", [])
         if reflections:
             parts.append("## Your recent reflections")
-            for r in reflections:
+            for r in reflections[:2]:
                 parts.append(f"  - {r}")
             parts.append("")
 
-        available = role_data.get("available_actions", [])
-        if available:
-            parts.append(f"## ALLOWED ACTIONS: {', '.join(available)}")
-            parts.append("")
-
-        parts.append("Pick the HIGHEST IMPACT action. Use the submit_action tool to respond.")
+        # ── P8: Call to action ────────────────────────────────────────
+        parts.append("Pick the HIGHEST IMPACT action. Respond with JSON only.")
         return "\n".join(parts)
 
     def _summarize_observation(self, obs: dict) -> str:
