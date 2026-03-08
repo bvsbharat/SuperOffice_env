@@ -1,4 +1,9 @@
-"""LLM-powered agent using Pydantic AI for structured, reliable decisions."""
+"""LLM-powered agent using Claude or ART-trained models for structured decisions.
+
+Supports dual-mode inference:
+  1. Claude (Anthropic API / AWS Bedrock) — default, uses tool_use for structured output
+  2. ART-trained model (OpenAI-compatible endpoint on Northflank GPU) — after training
+"""
 
 from __future__ import annotations
 
@@ -36,8 +41,6 @@ class ReflectionOutput(BaseModel):
 def _build_model_name(model: str, provider: str, aws_region: str) -> str:
     """Build the pydantic-ai model string."""
     if provider == "bedrock":
-        # pydantic-ai uses 'bedrock:model-id' format
-        # but we'll use anthropic directly with our own client
         return model
     return model
 
@@ -66,14 +69,27 @@ def _get_client(provider: str = "anthropic", aws_region: str = "us-east-1"):
     return anthropic.Anthropic()
 
 
+def _get_openai_client(base_url: str, api_key: str):
+    """Create an OpenAI-compatible client for ART-trained models."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai is required for ART models. Install with: pip install openai")
+    return OpenAI(base_url=base_url, api_key=api_key)
+
+
 # ── LLM Agent ────────────────────────────────────────────────────────
 
 class LLMAgent:
     """
-    Agent that uses Claude + Pydantic structured output for reliable decisions.
+    Agent that uses Claude or ART-trained models for reliable decisions.
 
-    Uses Pydantic models to validate LLM output, with automatic retry
-    and fallback. Supports both Anthropic API and AWS Bedrock.
+    Supports dual-mode inference:
+      - Claude (Anthropic/Bedrock): Uses tool_use for structured output
+      - ART model (OpenAI-compatible on Northflank GPU): Uses function calling
+
+    When an ART endpoint is configured, the agent will use the fine-tuned model
+    instead of Claude. Falls back to Claude if the ART model fails.
     """
 
     def __init__(self, role: str, model: str = "claude-sonnet-4-20250514",
@@ -85,16 +101,50 @@ class LLMAgent:
         self.base = BaseAgent(role=role)
         self.system_prompt = ROLE_PROMPTS[role]
         self._client = None
+        self._openai_client = None
+
+        # ART model endpoint (set by ARTTrainer after training)
+        self._art_endpoint: dict | None = None  # {base_url, api_key, model_name}
+        self.use_art_model = False  # Switch to True after training
 
         # Import role actions for validation
         from market.config import ROLE_ACTIONS
         self._allowed_actions = ROLE_ACTIONS.get(role, [])
+
+        # Track last user message for trajectory collection
+        self.last_user_message: str = ""
+
+    def set_art_endpoint(self, base_url: str, api_key: str, model_name: str):
+        """Configure the ART-trained model endpoint (e.g. Northflank GPU vLLM)."""
+        self._art_endpoint = {
+            "base_url": base_url,
+            "api_key": api_key,
+            "model_name": model_name,
+        }
+        self._openai_client = None  # Reset client
+        self.use_art_model = True
+        logger.info(f"{self.role}: Switched to ART model at {base_url} ({model_name})")
+
+    def clear_art_endpoint(self):
+        """Revert to Claude for inference."""
+        self._art_endpoint = None
+        self._openai_client = None
+        self.use_art_model = False
 
     @property
     def client(self):
         if self._client is None:
             self._client = _get_client(self.provider, self.aws_region)
         return self._client
+
+    @property
+    def openai_client(self):
+        if self._openai_client is None and self._art_endpoint:
+            self._openai_client = _get_openai_client(
+                self._art_endpoint["base_url"],
+                self._art_endpoint["api_key"],
+            )
+        return self._openai_client
 
     def decide(self, observation: dict, turn: int) -> dict:
         """Decide on an action given an observation. Returns a validated action dict."""
@@ -104,12 +154,16 @@ class LLMAgent:
 
         # Build prompt
         user_msg = self._build_user_message(observation, turn)
+        self.last_user_message = user_msg  # Store for trajectory collection
 
         # Call LLM with structured output + retry
         action = None
         for attempt in range(3):
             try:
-                action = self._call_structured(user_msg)
+                if self.use_art_model and self._art_endpoint:
+                    action = self._call_art_model(user_msg)
+                else:
+                    action = self._call_structured(user_msg)
                 # Validate action is allowed for this role
                 if action.action_type not in self._allowed_actions:
                     logger.warning(f"{self.role} picked invalid '{action.action_type}', retrying...")
@@ -118,6 +172,10 @@ class LLMAgent:
                 break
             except Exception as e:
                 logger.warning(f"LLM attempt {attempt+1}/3 for {self.role}: {type(e).__name__}: {e}")
+                # If ART model fails, fall back to Claude
+                if self.use_art_model and attempt == 1:
+                    logger.info(f"{self.role}: ART model failed, falling back to Claude")
+                    self.use_art_model = False
                 if attempt < 2:
                     import time
                     time.sleep(1)
@@ -130,6 +188,47 @@ class LLMAgent:
         # Store decision as plan
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
         return result
+
+    def _call_art_model(self, user_msg: str) -> AgentAction:
+        """Call ART-trained model via OpenAI-compatible endpoint (e.g. vLLM on Northflank)."""
+        tool_schema = AgentAction.model_json_schema()
+        properties = tool_schema.get("properties", {})
+
+        response = self.openai_client.chat.completions.create(
+            model=self._art_endpoint["model_name"],
+            max_tokens=1024,
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            tools=[{
+                "type": "function",
+                "function": {
+                    "name": "submit_action",
+                    "description": f"Submit your chosen action. action_type MUST be one of: {', '.join(self._allowed_actions)}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": ["action_type"],
+                    },
+                },
+            }],
+            tool_choice={"type": "function", "function": {"name": "submit_action"}},
+        )
+
+        choice = response.choices[0]
+
+        # Extract tool call
+        if choice.message.tool_calls:
+            tc = choice.message.tool_calls[0]
+            data = json.loads(tc.function.arguments)
+            return AgentAction.model_validate(data)
+
+        # Fallback: parse text response
+        if choice.message.content:
+            return self._parse_text_response(choice.message.content)
+
+        raise ValueError("No valid action from ART model")
 
     def _call_structured(self, user_msg: str) -> AgentAction:
         """Call Claude and parse response into a validated AgentAction."""
