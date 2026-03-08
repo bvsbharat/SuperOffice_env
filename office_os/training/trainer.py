@@ -32,7 +32,7 @@ class RemoteTrainer:
     Usage:
         trainer = RemoteTrainer(
             collector=collector,
-            base_model="Qwen/Qwen2.5-3B-Instruct",
+            base_model="Qwen/Qwen2.5-14B-Instruct",
             train_every_days=3,
         )
         if trainer.should_train(current_day):
@@ -43,7 +43,7 @@ class RemoteTrainer:
     def __init__(
         self,
         collector: TrajectoryCollector,
-        base_model: str = "Qwen/Qwen2.5-3B-Instruct",
+        base_model: str = "Qwen/Qwen2.5-14B-Instruct",
         train_every_days: int = 3,
         min_trajectories: int = 3,
         northflank_endpoint: str = "",

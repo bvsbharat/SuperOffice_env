@@ -281,7 +281,7 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
     return layout
 
 
-def run_dashboard(days: int = 90, model_name: str = "Qwen/Qwen2.5-3B-Instruct",
+def run_dashboard(days: int = 90, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
                   speed: float = 0.5, train_every: int = 3,
                   northflank_endpoint: str = "", scenario: str = "baseline"):
     """Run the simulation with a live terminal dashboard and remote training."""
@@ -534,7 +534,7 @@ def main():
     parser = argparse.ArgumentParser(description="Office OS Terminal Dashboard")
     parser.add_argument("--days", type=int, default=90, help="Days to simulate (default: 90)")
     parser.add_argument("--speed", type=float, default=0.5, help="Seconds between turns (default: 0.5)")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
                         help="Model name on the vLLM endpoint")
     parser.add_argument("--train-every", type=int, default=3,
                         help="Train every N simulation days (default: 3)")

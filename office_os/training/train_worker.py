@@ -13,12 +13,12 @@ Architecture:
 Usage:
     # Terminal 1: vLLM inference
     VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_server \\
-        --model Qwen/Qwen2.5-3B-Instruct --port 8080 --host 0.0.0.0 \\
+        --model Qwen/Qwen2.5-14B-Instruct --port 8080 --host 0.0.0.0 \\
         --enable-lora --max-loras 2 --max-lora-rank 64 \\
         --gpu-memory-utilization 0.4 --max-model-len 4096 --enforce-eager
 
     # Terminal 2: Training worker
-    python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-3B-Instruct
+    python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-14B-Instruct
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-_base_model = "Qwen/Qwen2.5-3B-Instruct"
+_base_model = "Qwen/Qwen2.5-14B-Instruct"
 _train_steps: dict[str, int] = {}
 _global_step: int = 0
 _lock = threading.Lock()
@@ -196,10 +196,10 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
 
         model = FastLanguageModel.get_peft_model(
             model,
-            r=64,
+            r=32,
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"],
-            lora_alpha=64,
+            lora_alpha=32,
             use_gradient_checkpointing="unsloth",
             random_state=3407,
         )
@@ -344,7 +344,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         training_args = GRPOConfig(
             output_dir=output_dir,
             use_vllm=False,
-            num_generations=8,           # More completions = more reward variance
+            num_generations=4,           # Reduced for 14B VRAM headroom
             max_prompt_length=3072,
             max_completion_length=1024,
             temperature=0.9,             # Higher temp = more diverse completions
@@ -547,7 +547,7 @@ def main():
     p = argparse.ArgumentParser(description="TRL GRPO Training Worker")
     p.add_argument("--port", type=int, default=8081)
     p.add_argument("--host", type=str, default="0.0.0.0")
-    p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-3B-Instruct")
+    p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-14B-Instruct")
     p.add_argument("--vllm-url", type=str, default="http://localhost:8080")
     p.add_argument("--lora-dir", type=str, default="/tmp/office_os_lora")
     p.add_argument("--hf-repo", type=str, default="",
