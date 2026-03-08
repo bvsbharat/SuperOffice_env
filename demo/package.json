@@ -6,6 +6,7 @@
     "start": "cd frontend && npm run dev",
     "BE_LLM": "cd api && python3 server.py --provider bedrock --model global.anthropic.claude-haiku-4-5-20251001-v1:0 --days 10 --port 8080",
     "BE_ART": "cd api && python3 server.py --provider art --art-endpoint ${ART_ENDPOINT:-http://localhost:9090} --art-model ${ART_MODEL:-Qwen/Qwen2.5-3B-Instruct} --days 10 --port 8080",
+    "BE_TRAINED": "cd api && python3 server.py --provider art --art-endpoint https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run --art-model Qwen/Qwen2.5-14B-Instruct --mode inference --northflank-endpoint https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run --days 10 --port 8080",
     "install:frontend": "cd frontend && npm install",
     "install:backend": "cd api && pip3 install -r requirements.txt",
     "install:all": "npm run install:frontend && npm run install:backend",

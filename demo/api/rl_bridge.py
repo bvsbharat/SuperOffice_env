@@ -223,11 +223,14 @@ class OfficeOsBridge:
         # Inference mode: use trained LoRA models via vLLM
         if self._mode == "inference" and self._northflank_endpoint:
             vllm_base_url = self._northflank_endpoint.rstrip("/") + "/v1"
+            # Roles that have trained LoRA adapters on the server
+            _trained_roles = {"ceo", "dev", "marketing", "sales", "content", "hr"}
             for role, agent in self._agents.items():
+                model_name = f"office-os-{role}" if role in _trained_roles else self.art_model
                 agent.set_vllm_endpoint(
                     base_url=vllm_base_url,
                     api_key="dummy",
-                    model_name=f"office-os-{role}",
+                    model_name=model_name,
                 )
             logger.info(f"Inference mode: all agents using trained LoRA at {vllm_base_url}")
 

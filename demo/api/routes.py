@@ -127,6 +127,13 @@ class ReconfigureRequest(BaseModel):
     mode: Optional[str] = None
 
 
+# Northflank endpoint for trained model inference
+_NORTHFLANK_ENDPOINT = os.environ.get(
+    "NORTHFLANK_INFERENCE_ENDPOINT",
+    "https://vllm--jupyter-pytorch--ddk86ftkfknr.code.run",
+)
+
+
 @router.post("/api/reconfigure")
 async def reconfigure(req: ReconfigureRequest):
     global _bridge, _active_config
@@ -138,6 +145,13 @@ async def reconfigure(req: ReconfigureRequest):
         bc["provider"] = req.provider
         if req.mode is not None:
             bc["mode"] = req.mode
+        # When switching to art/inference, set the Northflank endpoint
+        if req.provider == "art":
+            bc["art_endpoint"] = _NORTHFLANK_ENDPOINT
+            bc["art_model"] = req.model
+            bc["art_api_key"] = ""
+        if req.mode == "inference":
+            bc["northflank_endpoint"] = _NORTHFLANK_ENDPOINT
     # Track new config immediately so /api/config reflects it without needing a reset
     new_mode = req.mode or _active_config.get("mode", "llm")
     _active_config = {"model": req.model, "provider": req.provider, "mode": new_mode}

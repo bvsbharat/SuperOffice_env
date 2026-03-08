@@ -5,10 +5,11 @@ import { Trophy, Zap, Rocket, Cloud, Wind, Gem, Search, Brain, Moon, Sparkles, B
 import type { LucideIcon } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
-const MODELS: { id: string; name: string; badge: string; badgeColor: string }[] = [
+const MODELS: { id: string; name: string; badge: string; badgeColor: string; provider?: string; mode?: string }[] = [
   { id: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5',  badge: 'DEFAULT',  badgeColor: '#22c55e' },
   { id: 'us.anthropic.claude-sonnet-4-6[1m]',              name: 'Claude Sonnet 4.6', badge: 'BALANCED', badgeColor: '#6366f1' },
   { id: 'us.anthropic.claude-opus-4-6-v1',                  name: 'Claude Opus 4.6',   badge: 'APEX',     badgeColor: '#a855f7' },
+  { id: 'Qwen/Qwen2.5-14B-Instruct',                       name: 'Qwen 2.5 14B (Trained)', badge: 'TRAINED', badgeColor: '#ef4444', provider: 'art', mode: 'inference' },
   { id: 'mistral.ministral-3-14b-instruct',                 name: 'Ministral 3 14B',   badge: 'EU',       badgeColor: '#eab308' },
   { id: 'qwen.qwen3-next-80b-a3b',                          name: 'Qwen3 80B',         badge: 'NEW',      badgeColor: '#d97706' },
   { id: 'openai.gpt-oss-safeguard-120b',                    name: 'GPT OSS 120B',      badge: 'OPEN',     badgeColor: '#10b981' },
@@ -96,13 +97,16 @@ export function ModelSelector() {
   async function selectModel(id: string) {
     setOpen(false)
     if (normalizeId(id) === normalizeId(currentModel)) return
-    setCurrentModel(id, 'bedrock')
+    const modelDef = MODELS.find(m => m.id === id)
+    const provider = modelDef?.provider ?? 'bedrock'
+    const mode = modelDef?.mode ?? 'llm'
+    setCurrentModel(id, provider)
     setModelChanged(true)
     try {
       await fetch('/api/reconfigure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: id, provider: 'bedrock' }),
+        body: JSON.stringify({ model: id, provider, mode }),
       })
     } catch { /* best-effort */ }
   }
