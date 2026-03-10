@@ -14,12 +14,65 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from models import ToolCall, ToolDefinition
 from .base_agent import BaseAgent
 from .prompts import ROLE_PROMPTS
 
 logger = logging.getLogger(__name__)
 
-_OUTPUT_TOKENS = 512
+_OUTPUT_TOKENS = 4096  # Qwen3.5-0.8B supports 262K context; generous output budget
+_MAX_CONTEXT_TOKENS = 262144  # 262K — full native context of Qwen3.5-0.8B
+
+
+# ── Tool definitions for agent tool-calling ───────────────────────────
+
+AGENT_TOOLS = [
+    ToolDefinition(
+        name="update_sheets",
+        description="Sync current KPIs and customer pipeline to Google Sheets dashboard",
+        parameters={
+            "sheet_type": {
+                "type": "string",
+                "enum": ["dashboard", "customers", "all"],
+                "description": "Which sheet to update",
+            },
+        },
+    ),
+    ToolDefinition(
+        name="create_invoice",
+        description="Create an invoice sheet in Google Sheets for a closed deal",
+        parameters={
+            "customer_name": {
+                "type": "string",
+                "description": "Name of the customer who closed",
+            },
+        },
+    ),
+    ToolDefinition(
+        name="github_update",
+        description="Create or update a GitHub issue to track simulation progress",
+        parameters={
+            "action": {
+                "type": "string",
+                "enum": ["create_issue", "close_issue", "add_comment"],
+                "description": "GitHub action to take",
+            },
+            "title": {
+                "type": "string",
+                "description": "Issue title (for create) or comment body (for add_comment)",
+            },
+            "issue_number": {
+                "type": "integer",
+                "description": "Issue number (for close/comment). Optional for create.",
+            },
+            "labels": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Labels to apply (for create)",
+            },
+        },
+    ),
+]
 
 
 # ── Structured output models ─────────────────────────────────────────
@@ -31,6 +84,7 @@ class AgentAction(BaseModel):
     parameters: dict = Field(default_factory=dict, description="Action-specific parameters")
     reasoning: str = Field(default="", description="Brief explanation of why this action")
     message: Optional[str] = Field(default=None, description="Optional message to another agent: 'role: text'")
+    tool_calls: list[dict] = Field(default_factory=list, description="Optional tool calls (sheets, github, invoice)")
 
 
 class ReflectionOutput(BaseModel):
@@ -179,16 +233,30 @@ class LLMAgent:
         return result
 
     def _call_vllm(self, user_msg: str, rejected_actions: list[str] | None = None) -> AgentAction:
-        """Call vLLM model via OpenAI-compatible endpoint."""
+        """Call vLLM model via OpenAI-compatible endpoint.
+
+        Includes tool definitions in the prompt so Qwen models can generate
+        tool_calls alongside the primary action.
+        """
         actions_list = "\n".join(f"  - {a}" for a in self._allowed_actions)
+
+        # Build tool descriptions for the prompt
+        tool_descriptions = "\n".join(
+            f"  - {t.name}: {t.description}" for t in AGENT_TOOLS
+        )
+
         json_instruction = (
             f"\n\n## CRITICAL INSTRUCTIONS\n"
             f"You are the **{self.role}** agent. You can ONLY use these actions:\n"
             f"{actions_list}\n\n"
             f"Do NOT use actions from other roles. Any action not listed above is INVALID.\n\n"
+            f"## AVAILABLE TOOLS (optional)\n"
+            f"You may include tool_calls to trigger integrations:\n"
+            f"{tool_descriptions}\n\n"
             f"Respond with ONLY a valid JSON object, nothing else:\n"
             f"{{\"action_type\": \"<one of the actions above>\", \"target\": \"...\", "
-            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": \"role: message\"}}"
+            f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": \"role: message\", "
+            f"\"tool_calls\": [{{\"tool_name\": \"...\", \"arguments\": {{}}}}]}}"
         )
 
         if rejected_actions:
@@ -357,33 +425,66 @@ class LLMAgent:
 
         Routes non-Claude models to Bedrock Converse API (boto3) since
         tool_choice is an Anthropic-only feature.
+
+        Provides tool definitions for sheets, invoice, and GitHub alongside
+        the main submit_action tool.
         """
         if not self._is_claude_model():
             return self._call_bedrock_converse(user_msg)
 
         tool_schema = AgentAction.model_json_schema()
         properties = tool_schema.get("properties", {})
+        # Remove tool_calls from the schema — it's populated from tool use blocks
+        properties.pop("tool_calls", None)
+
+        # Build tools list: primary action + integration tools
+        tools = [
+            {
+                "name": "submit_action",
+                "description": (
+                    f"Submit your chosen action. action_type MUST be one of: "
+                    f"{', '.join(self._allowed_actions)}. "
+                    f"You may also include tool_calls to trigger integrations "
+                    f"(update_sheets, create_invoice, github_update)."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": ["action_type"],
+                },
+            },
+        ]
+        # Add integration tools
+        for tool_def in AGENT_TOOLS:
+            tools.append(tool_def.to_schema())
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1024,
             system=self.system_prompt,
             messages=[{"role": "user", "content": user_msg}],
-            tools=[{
-                "name": "submit_action",
-                "description": f"Submit your chosen action. action_type MUST be one of: {', '.join(self._allowed_actions)}",
-                "input_schema": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": ["action_type"],
-                },
-            }],
+            tools=tools,
             tool_choice={"type": "tool", "name": "submit_action"},
         )
 
+        action = None
+        tool_calls = []
+
         for block in response.content:
-            if block.type == "tool_use" and block.name == "submit_action":
-                return AgentAction.model_validate(block.input)
+            if block.type == "tool_use":
+                if block.name == "submit_action":
+                    action = AgentAction.model_validate(block.input)
+                else:
+                    # Integration tool call (sheets, invoice, github)
+                    tool_calls.append(ToolCall(
+                        tool_name=block.name,
+                        arguments=block.input if isinstance(block.input, dict) else {},
+                    ).to_dict())
+
+        if action:
+            if tool_calls:
+                action.tool_calls = tool_calls
+            return action
 
         for block in response.content:
             if hasattr(block, "text") and block.text:
@@ -540,19 +641,19 @@ class LLMAgent:
                 parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
 
-        # ── P1: Shared team memory (last 3) ───────────────────────────
+        # ── P1: Shared team memory (last 8) ───────────────────────────
         shared_mem = role_data.pop("shared_memory", [])
         if shared_mem:
             parts.append("## SHARED TEAM MEMORY (all agents see this)")
-            for entry in shared_mem[-3:]:
+            for entry in shared_mem[-8:]:
                 parts.append(f"  [{entry.get('author', '?')}] ({entry.get('type', '?')}) {entry.get('content', '')}")
             parts.append("")
 
-        # ── P2: Team messages (last 3) ────────────────────────────────
+        # ── P2: Team messages (last 8) ────────────────────────────────
         messages = obs.get("messages", [])
         if messages:
             parts.append("## Team channel (recent messages)")
-            for m in messages[-3:]:
+            for m in messages[-8:]:
                 parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
             parts.append("")
 
@@ -564,11 +665,11 @@ class LLMAgent:
                 parts.append(f"  - {e.get('name', '?')}: {e.get('description', '')}")
             parts.append("")
 
-        # ── P4: Recent team actions (last 3) ──────────────────────────
+        # ── P4: Recent team actions (last 10) ─────────────────────────
         recent = obs.get("recent_actions", [])
         if recent:
             parts.append("## Recent team actions")
-            for a in recent[-3:]:
+            for a in recent[-10:]:
                 parts.append(f"  [{a.get('agent_id')}] {a.get('action_type')} -> {a.get('detail', '')}")
             parts.append("")
 
@@ -603,7 +704,10 @@ class LLMAgent:
 
         # ── P8: Call to action ────────────────────────────────────────
         parts.append("Pick the HIGHEST IMPACT action. Respond with JSON only.")
-        return "\n".join(parts)
+
+        full_msg = "\n".join(parts)
+        # Prune to context budget if needed (Qwen3.5-0.8B supports full 262K)
+        return self._prune_to_budget(full_msg, _MAX_CONTEXT_TOKENS - _OUTPUT_TOKENS)
 
     def _summarize_observation(self, obs: dict) -> str:
         """Create a brief text summary of an observation for memory."""

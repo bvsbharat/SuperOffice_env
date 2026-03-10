@@ -21,7 +21,7 @@ PERSONALITY_TYPES = ["price_sensitive", "feature_driven", "relationship_focused"
 
 @dataclass
 class CustomerPersonality:
-    """Hidden personality traits for Bayesian opponent modeling (inspired by #19, #38).
+    """Hidden personality traits for Bayesian opponent modeling.
 
     Each customer has hidden weights across four dimensions. Agents must infer
     the personality type from interaction history and match their pitch accordingly.
@@ -202,7 +202,6 @@ class SharedMemory:
     """
     Shared team knowledge board — all agents read and write.
 
-    Inspired by colony-collapse's SharedKnowledge pattern.
     Agents post updates, requests, and insights here.
     All entries are visible to all agents.
     """

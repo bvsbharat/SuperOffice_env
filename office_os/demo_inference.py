@@ -266,7 +266,7 @@ def load_hf_model(hf_repo: str, role: str, step: int = 1):
     from huggingface_hub import snapshot_download
     import torch
 
-    base_model_name = "Qwen/Qwen2.5-14B-Instruct"
+    base_model_name = "Qwen/Qwen3.5-0.8B"
 
     # Download LoRA adapter from HF
     subfolder = f"{role}/step-{step}"
@@ -355,7 +355,7 @@ def main():
                         help="Roles to demo (default: all)")
     parser.add_argument("--compare", action="store_true",
                         help="Compare base model vs fine-tuned side by side")
-    parser.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
+    parser.add_argument("--base-model", type=str, default="Qwen/Qwen3.5-0.8B",
                         help="Base model name")
     args = parser.parse_args()
 

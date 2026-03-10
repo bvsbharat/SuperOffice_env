@@ -147,7 +147,7 @@ class Config:
     ab_test_cost: float = 200.0
     contractor_cost: float = 1000.0
 
-    # Adversarial Curriculum (inspired by Kube SRE Gym #51)
+    # Adversarial Curriculum
     adversarial_enabled: bool = True
     adversarial_base_probability: float = 0.10  # Base chance of adversarial event per day
     adversarial_escalation_rate: float = 0.02   # Probability increase per cumulative reward milestone

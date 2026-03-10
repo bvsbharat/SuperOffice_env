@@ -115,13 +115,11 @@ class TrajectoryCollector:
 
 
 class ScenarioMiner:
-    """Mines critical decision points from simulation data (inspired by EnterpriseSim #73).
+    """Mines critical decision points from simulation data.
 
     After each simulation run, identifies turns where reward spiked or crashed,
     then extracts (state, action) windows around those moments as focused
-    training scenarios.
-
-    Pattern: Simulate → Mine → Train
+    training scenarios (Simulate -> Mine -> Train).
     """
 
     def __init__(self, spike_threshold: float = 5.0, crash_threshold: float = -3.0, window_size: int = 3):

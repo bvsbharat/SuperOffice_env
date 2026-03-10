@@ -1,7 +1,7 @@
 """Dynamic market event generator with adversarial curriculum design.
 
-Includes the AdversarialEventDesigner (inspired by Kube SRE Gym #51 winner)
-which analyzes agent performance and generates targeted challenges.
+Includes the AdversarialEventDesigner which analyzes agent performance
+and generates targeted challenges.
 """
 
 from __future__ import annotations
@@ -396,7 +396,7 @@ class EventEngine:
         event.effects = {"media_boost": True}
 
 
-# ── Adversarial Curriculum Designer (inspired by Kube SRE Gym #51) ────────
+# ── Adversarial Curriculum Designer ────────────────────────────────────────
 
 ADVERSARIAL_TEMPLATES = {
     "sales_too_easy": [

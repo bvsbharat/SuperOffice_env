@@ -160,7 +160,6 @@ SCENARIOS: dict[str, Scenario] = {
 class MinedScenario:
     """A scenario extracted from simulation data at a critical decision point.
 
-    Inspired by EnterpriseSim #73's "Simulate → Mine → Train" pattern.
     Starts agents at a critical moment rather than day 1.
     """
     name: str

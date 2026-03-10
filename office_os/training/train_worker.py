@@ -13,12 +13,12 @@ Architecture:
 Usage:
     # Terminal 1: vLLM inference
     VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_server \\
-        --model Qwen/Qwen2.5-14B-Instruct --port 8080 --host 0.0.0.0 \\
+        --model Qwen/Qwen3.5-0.8B --port 8080 --host 0.0.0.0 \\
         --enable-lora --max-loras 2 --max-lora-rank 64 \\
-        --gpu-memory-utilization 0.4 --max-model-len 4096 --enforce-eager
+        --gpu-memory-utilization 0.9 --max-model-len 262144 --enforce-eager
 
     # Terminal 2: Training worker
-    python training/train_worker.py --port 8081 --base-model Qwen/Qwen2.5-14B-Instruct
+    python training/train_worker.py --port 8081 --base-model Qwen/Qwen3.5-0.8B
 """
 
 from __future__ import annotations
@@ -35,40 +35,74 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-_base_model = "Qwen/Qwen2.5-14B-Instruct"
-_train_steps: dict[str, int] = {}
-_global_step: int = 0
-_lock = threading.Lock()
-_vllm_url = "http://localhost:8080"  # vLLM inference server
-_lora_output_dir = "/tmp/office_os_lora"
-_hf_repo = ""       # e.g. "username/office-os-loras"
-_wandb_project = "" # e.g. "office-os"
-
-# LLM-as-a-judge configuration
-# Providers: "bedrock" (default), "anthropic", "openrouter", "vllm"
-_judge_provider = os.environ.get("JUDGE_PROVIDER", "bedrock" if os.environ.get("CLAUDE_CODE_USE_BEDROCK") else "vllm")
-_judge_model = os.environ.get("JUDGE_MODEL", "")  # Auto-detected per provider if empty
-_openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
-
 ALL_ROLES = ["ceo", "dev", "marketing", "sales", "content", "hr"]
 SKIP_TRAINING = {"customer"}  # Customer role uses base model, no LoRA needed
 
-# Initialize step counters
-for role in ALL_ROLES:
-    _train_steps[role] = 0
+
+class TrainingState:
+    """Encapsulates all mutable training worker state.
+
+    Replaces scattered global variables with a single thread-safe instance.
+    State can be checkpointed/restored if needed in the future.
+    """
+
+    def __init__(
+        self,
+        base_model: str = "Qwen/Qwen3.5-0.8B",
+        vllm_url: str = "http://localhost:8080",
+        lora_output_dir: str = "/tmp/office_os_lora",
+        hf_repo: str = "",
+        wandb_project: str = "",
+        judge_provider: str = "",
+        judge_model: str = "",
+    ):
+        self.base_model = base_model
+        self.vllm_url = vllm_url
+        self.lora_output_dir = lora_output_dir
+        self.hf_repo = hf_repo
+        self.wandb_project = wandb_project
+        self.judge_provider = judge_provider or os.environ.get(
+            "JUDGE_PROVIDER",
+            "bedrock" if os.environ.get("CLAUDE_CODE_USE_BEDROCK") else "vllm",
+        )
+        self.judge_model = judge_model or os.environ.get("JUDGE_MODEL", "")
+        self.openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        self.train_steps: dict[str, int] = {role: 0 for role in ALL_ROLES}
+        self.global_step: int = 0
+        self.lock = threading.Lock()
+
+    def get_judge_model(self) -> str:
+        if self.judge_model:
+            return self.judge_model
+        defaults = {
+            "bedrock": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic": "claude-sonnet-4-20250514",
+            "openrouter": "anthropic/claude-sonnet-4",
+            "vllm": self.base_model,
+        }
+        return defaults.get(self.judge_provider, self.base_model)
+
+    def to_dict(self) -> dict:
+        return {
+            "base_model": self.base_model,
+            "vllm_url": self.vllm_url,
+            "global_step": self.global_step,
+            "train_steps": dict(self.train_steps),
+            "lora_output_dir": self.lora_output_dir,
+            "judge_provider": self.judge_provider,
+            "judge_model": self.get_judge_model(),
+            "wandb_project": self.wandb_project or "(not set)",
+            "hf_repo": self.hf_repo or "(not set)",
+        }
+
+
+# Singleton instance — initialised in main(), used by handler & training fns
+_state = TrainingState()
 
 
 def _get_judge_model() -> str:
     """Get the judge model name, with sensible defaults per provider."""
-    if _judge_model:
-        return _judge_model
-    defaults = {
-        "bedrock": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-        "anthropic": "claude-sonnet-4-20250514",
-        "openrouter": "anthropic/claude-sonnet-4",
-        "vllm": _base_model,
-    }
-    return defaults.get(_judge_provider, _base_model)
+    return _state.get_judge_model()
 
 
 def _judge_via_bedrock(prompt: str) -> str | None:
@@ -82,7 +116,7 @@ def _judge_via_bedrock(prompt: str) -> str | None:
         "temperature": 0.0,
         "messages": [{"role": "user", "content": prompt}],
     })
-    resp = client.invoke_model(modelId=_get_judge_model(), body=body, contentType="application/json")
+    resp = client.invoke_model(modelId=_state.get_judge_model(), body=body, contentType="application/json")
     result = json.loads(resp["body"].read())
     return result["content"][0]["text"].strip()
 
@@ -92,7 +126,7 @@ def _judge_via_anthropic(prompt: str) -> str | None:
     import anthropic
     client = anthropic.Anthropic()
     resp = client.messages.create(
-        model=_get_judge_model(),
+        model=_state.get_judge_model(),
         max_tokens=8,
         temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
@@ -149,17 +183,17 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
     )
     try:
         reply = None
-        if _judge_provider == "bedrock":
+        if _state.judge_provider == "bedrock":
             reply = _judge_via_bedrock(judge_prompt)
-        elif _judge_provider == "anthropic":
+        elif _state.judge_provider == "anthropic":
             reply = _judge_via_anthropic(judge_prompt)
-        elif _judge_provider == "openrouter":
+        elif _state.judge_provider == "openrouter":
             reply = _judge_via_openai_compat(
-                judge_prompt, "https://openrouter.ai/api", _openrouter_api_key, _get_judge_model(),
+                judge_prompt, "https://openrouter.ai/api", _state.openrouter_api_key, _state.get_judge_model(),
             )
         else:  # "vllm" or unknown — use local vLLM
             reply = _judge_via_openai_compat(
-                judge_prompt, _vllm_url, "", _get_judge_model(),
+                judge_prompt, _state.vllm_url, "", _state.get_judge_model(),
             )
 
         if reply:
@@ -168,13 +202,12 @@ def _llm_judge(text: str, role: str, valid_actions: list[str]) -> float:
                     return (int(ch) - 1) / 4.0  # Normalize: 1->0.0, 5->1.0
         return 0.25  # 2/5 = "poor", not neutral
     except Exception as e:
-        logger.warning(f"LLM judge ({_judge_provider}) failed: {e}")
+        logger.warning(f"LLM judge ({_state.judge_provider}) failed: {e}")
         return 0.25  # 2/5 = "poor" on failure — don't reward bad outputs
 
 
 def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5) -> dict:
     """Train with TRL GRPO using Unsloth. Saves LoRA and hot-loads into vLLM."""
-    global _global_step
     import torch
 
     if not trajectories_data:
@@ -189,17 +222,17 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
 
         # Load model with Unsloth 4-bit quantization
         model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=_base_model,
-            max_seq_length=4096,
+            model_name=_state.base_model,
+            max_seq_length=262144,  # Qwen3.5-0.8B full 262K native context
             load_in_4bit=True,
         )
 
         model = FastLanguageModel.get_peft_model(
             model,
-            r=32,
+            r=16,  # Reduced for 3B model (was 32 for 14B)
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"],
-            lora_alpha=32,
+            lora_alpha=16,
             use_gradient_checkpointing="unsloth",
             random_state=3407,
         )
@@ -244,76 +277,135 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         if trajectories_data:
             _avg_traj_reward = sum(t.get("reward", 0) for t in trajectories_data) / len(trajectories_data)
 
-        # Reward function that scores EACH generated completion independently.
-        # GRPO needs reward variance within a group to produce gradients.
+        # --- Reward functions aligned with market/metrics.py RewardCalculator ---
+        # Weights match the simulation's decomposed reward signals so training
+        # optimises the same objective the agent is evaluated on at runtime.
+
         def score_completion(completions, **kwargs) -> list[float]:
-            """Score each completion on format, validity, and quality."""
+            """Score each completion using weights aligned with simulation rewards.
+
+            Sub-signal weights mirror market/metrics.py RewardCalculator:
+              format_reward:      0.1  (valid action_type present)
+              role_compliance:    0.2  (action in ROLE_ACTIONS) / -0.5 penalty
+              execution_proxy:    0.3  (well-formed JSON that could execute)
+              impact_proxy:       0.3  (reasoning quality + context grounding)
+              collaboration:      0.1  (proper inter-agent messaging)
+              efficiency:        -0.1  (penalise empty/minimal output)
+            """
             rewards = []
             for completion in completions:
                 text = completion[0]["content"] if isinstance(completion, list) else str(completion)
                 score = 0.0
 
-                # 1. Valid JSON? (+0.3)
+                # --- format_reward (0.1) — matches metrics.py format_reward ---
                 parsed = None
                 try:
                     start = text.find("{")
                     end = text.rfind("}") + 1
                     if start >= 0 and end > start:
                         parsed = json.loads(text[start:end])
-                        score += 0.3
                 except (json.JSONDecodeError, ValueError):
                     pass
 
-                # 2. Clean output — no extra text outside JSON (-0.1)
-                if parsed:
+                if parsed and isinstance(parsed, dict) and "action_type" in parsed:
+                    score += 0.1  # format_reward
+
+                    # --- role_compliance (0.2 / -0.5) — matches metrics.py ---
+                    if parsed["action_type"] in valid_actions:
+                        score += 0.2
+                    else:
+                        score -= 0.5
+
+                    # --- execution_proxy (0.3) — valid structure = likely to execute ---
+                    can_execute = True
+                    if not parsed.get("target") and parsed["action_type"] not in (
+                        "SHIP_RELEASE", "TEAM_SYNC", "REVIEW_STRATEGY", "TRACK_OKRS"
+                    ):
+                        can_execute = False
+                    # Clean JSON-only output (no extra text)
                     before_json = text[:text.find("{")].strip()
                     after_json = text[text.rfind("}") + 1:].strip()
-                    if not before_json and not after_json:
-                        score += 0.1  # Bonus for clean JSON-only output
+                    if before_json or after_json:
+                        can_execute = False
+                    score += 0.3 if can_execute else -0.1
 
-                if parsed and isinstance(parsed, dict):
-                    # 3. Has action_type field? (+0.2)
-                    if "action_type" in parsed:
-                        score += 0.2
-                        # 4. Valid action_type for this role? (+0.3)
-                        if parsed["action_type"] in valid_actions:
-                            score += 0.3
-                        else:
-                            score -= 0.2  # Penalty for wrong-role action
-
-                    # 5. Reasoning quality (0 to +0.2)
+                    # --- impact_proxy (up to 0.3) — reasoning + context grounding ---
                     reasoning = parsed.get("reasoning", "")
-                    if reasoning:
-                        words = len(reasoning.split())
-                        if words >= 10:
-                            score += 0.2  # Substantive reasoning
-                        elif words >= 5:
-                            score += 0.1  # Brief but present
-                        else:
-                            score += 0.05  # Minimal
-
-                    # 6. Has non-empty target? (+0.1)
-                    target = parsed.get("target", "")
-                    if target and target != "auto" and len(target) > 1:
+                    words = len(reasoning.split()) if reasoning else 0
+                    if words >= 15:
+                        score += 0.15  # Substantive reasoning
+                    elif words >= 8:
                         score += 0.1
-                        # 7. Target references context entities? (+0.1)
+                    elif words >= 3:
+                        score += 0.05
+
+                    target = parsed.get("target", "")
+                    if target and len(target) > 1:
+                        score += 0.05
+                        # Context grounding — references real entities from observation
                         if any(e.lower() in target.lower() for e in _context_entities if len(e) > 2):
                             score += 0.1
 
-                    # 8. Message field with proper format "role: text"? (+0.1)
+                    # --- collaboration (0.1) — proper inter-agent messaging ---
                     message = parsed.get("message", "")
                     if message and ":" in str(message):
                         msg_parts = str(message).split(":", 1)
-                        if msg_parts[0].strip().lower() in ["ceo", "dev", "marketing",
-                                                             "sales", "content", "hr"]:
+                        if msg_parts[0].strip().lower() in ALL_ROLES:
                             score += 0.1
 
-                    # 9. Has parameters dict? (+0.05)
-                    if isinstance(parsed.get("parameters"), dict) and parsed["parameters"]:
-                        score += 0.05
+                else:
+                    # No valid action parsed — equivalent to failed execution (-1.0)
+                    # but clamped for GRPO stability
+                    score = -0.5
 
-                rewards.append(max(score, 0.0))
+                rewards.append(score)
             return rewards
+
+        # Trajectory-based reward: uses actual simulation reward as signal.
+        # This bridges the gap between training reward and runtime reward.
+        def trajectory_alignment_reward(completions, **kwargs) -> list[float]:
+            """Score completions by similarity to high-reward trajectory actions.
+
+            Completions that produce the same action_type as the original
+            trajectory get the trajectory's actual simulation reward (normalised).
+            This ensures GRPO optimises toward actions the simulation rewards.
+            """
+            scores = []
+            for completion in completions:
+                text = completion[0]["content"] if isinstance(completion, list) else str(completion)
+                parsed = None
+                try:
+                    start = text.find("{")
+                    end = text.rfind("}") + 1
+                    if start >= 0 and end > start:
+                        parsed = json.loads(text[start:end])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+                if not parsed or not isinstance(parsed, dict):
+                    scores.append(0.0)
+                    continue
+
+                gen_action = parsed.get("action_type", "")
+                # Find best matching trajectory and use its simulation reward
+                best_score = 0.0
+                for t in trajectories_data:
+                    t_action = t.get("assistant_response", {}).get("action_type", "")
+                    t_reward = t.get("reward", 0.0)
+                    # Normalise trajectory reward to [0, 1] range
+                    norm_reward = max(0.0, min(1.0, (t_reward + 2.0) / 12.0))
+
+                    if gen_action == t_action:
+                        # Same action type — use simulation reward
+                        best_score = max(best_score, norm_reward)
+                        # Bonus if target also matches
+                        gen_target = parsed.get("target", "").lower()
+                        t_target = t.get("assistant_response", {}).get("target", "").lower()
+                        if gen_target and t_target and gen_target in t_target:
+                            best_score = min(1.0, best_score + 0.1)
+
+                scores.append(best_score)
+            return scores
 
         # LLM-as-a-judge reward: uses local vLLM to rate strategic quality
         def llm_judge_reward(completions, **kwargs) -> list[float]:
@@ -325,29 +417,29 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             return scores
 
         # GRPO config — no vLLM integration (avoids known bugs)
-        output_dir = os.path.join(_lora_output_dir, role)
+        output_dir = os.path.join(_state.lora_output_dir, role)
         os.makedirs(output_dir, exist_ok=True)
 
         # W&B logging
         report_to = "none"
         run_name = None
-        if _wandb_project:
+        if _state.wandb_project:
             try:
                 import wandb
                 report_to = "wandb"
-                run_name = f"{role}-step{_global_step + 1}"
-                os.environ.setdefault("WANDB_PROJECT", _wandb_project)
-                logger.info(f"W&B logging enabled: project={_wandb_project}, run={run_name}")
+                run_name = f"{role}-step{_state.global_step + 1}"
+                os.environ.setdefault("WANDB_PROJECT", _state.wandb_project)
+                logger.info(f"W&B logging enabled: project={_state.wandb_project}, run={run_name}")
             except ImportError:
                 logger.warning("wandb not installed, skipping W&B logging")
 
         training_args = GRPOConfig(
             output_dir=output_dir,
             use_vllm=False,
-            num_generations=4,           # Reduced for 14B VRAM headroom
-            max_prompt_length=3072,
-            max_completion_length=1024,
-            temperature=0.9,             # Higher temp = more diverse completions
+            num_generations=8,           # More generations = better GRPO baselines for group comparison
+            max_prompt_length=65536,  # 64K prompt for GRPO training (Qwen3.5-0.8B supports 262K)
+            max_completion_length=4096,  # 4K completion budget
+            temperature=0.7,             # Moderate temp: diverse but focused completions
             learning_rate=learning_rate,
             per_device_train_batch_size=1,
             gradient_accumulation_steps=4,
@@ -365,7 +457,7 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
             model=model,
             args=training_args,
             train_dataset=dataset,
-            reward_funcs=[score_completion, llm_judge_reward],
+            reward_funcs=[score_completion, trajectory_alignment_reward, llm_judge_reward],
             tokenizer=tokenizer,
         )
 
@@ -380,24 +472,24 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
 
         # Push to HuggingFace — use upload_folder for reliable subfolder support
         hf_pushed = False
-        if _hf_repo:
+        if _state.hf_repo:
             try:
                 from huggingface_hub import HfApi
                 api = HfApi()
-                subfolder = f"{role}/step-{_global_step + 1}"
+                subfolder = f"{role}/step-{_state.global_step + 1}"
                 api.upload_folder(
                     folder_path=adapter_path,
-                    repo_id=_hf_repo,
+                    repo_id=_state.hf_repo,
                     path_in_repo=subfolder,
-                    commit_message=f"LoRA {role} step {_global_step + 1}",
+                    commit_message=f"LoRA {role} step {_state.global_step + 1}",
                 )
-                logger.info(f"Pushed LoRA to HuggingFace: {_hf_repo}/{subfolder}")
+                logger.info(f"Pushed LoRA to HuggingFace: {_state.hf_repo}/{subfolder}")
                 hf_pushed = True
             except Exception as e:
                 logger.warning(f"Failed to push to HuggingFace: {e}")
 
         # Finish W&B run
-        if _wandb_project:
+        if _state.wandb_project:
             try:
                 import wandb
                 if wandb.run:
@@ -412,8 +504,8 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         lora_name = f"office-os-{role}"
         loaded = _hotload_lora(lora_name, adapter_path)
 
-        _global_step += 1
-        _train_steps[role] = _train_steps.get(role, 0) + 1
+        _state.global_step += 1
+        _state.train_steps[role] = _state.train_steps.get(role, 0) + 1
 
         # Free GPU memory
         del model, trainer, tokenizer
@@ -423,12 +515,12 @@ def _train_grpo(role: str, trajectories_data: list, learning_rate: float = 2e-5)
         return {
             "status": "trained",
             "role": role,
-            "step": _global_step,
-            "role_step": _train_steps[role],
+            "step": _state.global_step,
+            "role_step": _state.train_steps[role],
             "trajectories_used": len(rows),
             "lora_loaded": loaded,
             "hf_pushed": hf_pushed,
-            "model_name": lora_name if loaded else _base_model,
+            "model_name": lora_name if loaded else _state.base_model,
             "adapter_path": adapter_path,
         }
 
@@ -454,7 +546,7 @@ def _hotload_lora(lora_name: str, adapter_path: str) -> bool:
         }).encode()
 
         req = urllib.request.Request(
-            f"{_vllm_url}/v1/load_lora_adapter",
+            f"{_state.vllm_url}/v1/load_lora_adapter",
             data=payload,
             method="POST",
             headers={"Content-Type": "application/json"},
@@ -474,23 +566,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._json(200, {
-                "status": "ok",
-                "vllm_url": _vllm_url,
-                "global_step": _global_step,
-                "train_steps": _train_steps,
-                "base_model": _base_model,
-                "lora_output_dir": _lora_output_dir,
-                "judge_provider": _judge_provider,
-                "judge_model": _get_judge_model(),
-                "wandb_project": _wandb_project or "(not set)",
-                "hf_repo": _hf_repo or "(not set)",
-            })
+            self._json(200, {"status": "ok", **_state.to_dict()})
         elif self.path == "/models":
             self._json(200, {
-                "train_steps": _train_steps,
-                "global_step": _global_step,
-                "base_model": _base_model,
+                "train_steps": _state.train_steps,
+                "global_step": _state.global_step,
+                "base_model": _state.base_model,
             })
         else:
             self._json(404, {"error": "Not found"})
@@ -515,18 +596,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # Allow per-request overrides for wandb/HF (avoids worker restart)
-            global _wandb_project, _hf_repo
             req_wandb = data.get("wandb_project", "")
             req_hf = data.get("hf_repo", "")
             if req_wandb:
-                _wandb_project = req_wandb
-                logger.info(f"W&B project set via request: {_wandb_project}")
+                _state.wandb_project = req_wandb
+                logger.info(f"W&B project set via request: {_state.wandb_project}")
             if req_hf:
-                _hf_repo = req_hf
-                logger.info(f"HF repo set via request: {_hf_repo}")
+                _state.hf_repo = req_hf
+                logger.info(f"HF repo set via request: {_state.hf_repo}")
 
             logger.info(f"Training request for {role}: {len(data.get('trajectories', []))} trajectories")
-            with _lock:
+            with _state.lock:
                 result = _train_grpo(
                     role,
                     data.get("trajectories", []),
@@ -566,7 +646,7 @@ def main():
     p = argparse.ArgumentParser(description="TRL GRPO Training Worker")
     p.add_argument("--port", type=int, default=8081)
     p.add_argument("--host", type=str, default="0.0.0.0")
-    p.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-14B-Instruct")
+    p.add_argument("--base-model", type=str, default="Qwen/Qwen3.5-0.8B")
     p.add_argument("--vllm-url", type=str, default="http://localhost:8080")
     p.add_argument("--lora-dir", type=str, default="/tmp/office_os_lora")
     p.add_argument("--hf-repo", type=str, default="",
@@ -579,24 +659,22 @@ def main():
                    help="LLM judge model (auto-detected per provider if unset)")
     args = p.parse_args()
 
-    global _base_model, _vllm_url, _lora_output_dir, _hf_repo, _wandb_project
-    global _judge_provider, _judge_model, _openrouter_api_key
-    _base_model = args.base_model
-    _vllm_url = args.vllm_url
-    _lora_output_dir = args.lora_dir
-    _hf_repo = args.hf_repo or os.environ.get("HF_REPO", "")
-    _wandb_project = args.wandb_project or os.environ.get("WANDB_PROJECT", "")
-    if args.judge_provider:
-        _judge_provider = args.judge_provider
-    if args.judge_model:
-        _judge_model = args.judge_model
-    _openrouter_api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    global _state
+    _state = TrainingState(
+        base_model=args.base_model,
+        vllm_url=args.vllm_url,
+        lora_output_dir=args.lora_dir,
+        hf_repo=args.hf_repo or os.environ.get("HF_REPO", ""),
+        wandb_project=args.wandb_project or os.environ.get("WANDB_PROJECT", ""),
+        judge_provider=args.judge_provider,
+        judge_model=args.judge_model,
+    )
 
     logger.info(f"TRL GRPO Training Worker on {args.host}:{args.port}")
-    logger.info(f"Base model: {_base_model}")
-    logger.info(f"vLLM server: {_vllm_url}")
-    logger.info(f"LoRA output: {_lora_output_dir}")
-    logger.info(f"LLM Judge: provider={_judge_provider}, model={_get_judge_model()}")
+    logger.info(f"Base model: {_state.base_model}")
+    logger.info(f"vLLM server: {_state.vllm_url}")
+    logger.info(f"LoRA output: {_state.lora_output_dir}")
+    logger.info(f"LLM Judge: provider={_state.judge_provider}, model={_state.get_judge_model()}")
     logger.info(f"Endpoints:")
     logger.info(f"  GET  /health   - Status")
     logger.info(f"  POST /train    - Train a role with GRPO")

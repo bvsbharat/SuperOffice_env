@@ -1,6 +1,6 @@
 """Reward calculation for Office OS agents.
 
-Decomposed into explicit sub-signals (inspired by OpsGate #4's graduated reward):
+Decomposed into explicit sub-signals:
 - Format reward: valid action with required fields
 - Role compliance: action matches role's allowed set
 - Execution reward: action succeeded in simulator

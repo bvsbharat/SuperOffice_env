@@ -159,6 +159,7 @@ class OfficeOsEnvironment(Environment):
             reward=reward,
             done=done,
             action_result=action_result,
+            reward_breakdown=reward_breakdown,
         )
 
     def sync_sheets(self):
@@ -176,7 +177,8 @@ class OfficeOsEnvironment(Environment):
         new_events: list,
         reward: float,
         done: bool,
-        action_result: dict,
+        action_result,
+        reward_breakdown: dict | None = None,
     ) -> OfficeOsObservation:
         """Build role-scoped observation for the acting agent."""
         role = agent_id
@@ -198,13 +200,14 @@ class OfficeOsEnvironment(Environment):
                 for e in new_events
             ],
             role_data=role_data,
-            last_action_result=action_result,
+            last_action_result=action_result.to_dict() if hasattr(action_result, 'to_dict') else action_result,
             done=done,
             reward=reward,
             metadata={
                 "step": self._state.step_count,
                 "episode_id": self._state.episode_id,
                 "turn": self._market.turn,
+                "reward_breakdown": reward_breakdown or {},
             },
         )
 

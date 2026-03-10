@@ -12,10 +12,6 @@ class BaseAgent:
     """
     A Smallville-style agent with memory streams, reflection, planning,
     skill library, and working memory.
-
-    Enhanced with Voyager-VRAM (#50) patterns:
-    - SkillLibrary: stores successful action patterns for reuse
-    - WorkingMemory: persistent scratchpad across turns
     """
 
     role: str  # dev, marketing, sales, content

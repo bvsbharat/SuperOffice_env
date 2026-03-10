@@ -1,11 +1,9 @@
-"""Smallville-style memory streams with Voyager-style skill library.
+"""Smallville-style memory streams with skill library and working memory.
 
-Enhanced with three memory systems (inspired by Voyager-VRAM #50):
-- MemoryStream: Observations, reflections, plans (original Smallville pattern)
+Three memory systems:
+- MemoryStream: Observations, reflections, plans with keyword-based semantic retrieval
 - SkillLibrary: Stores and retrieves successful action patterns
 - WorkingMemory: Persistent scratchpad across turns
-
-Also adds keyword-based semantic retrieval alongside recency scoring.
 """
 
 from __future__ import annotations
@@ -48,7 +46,7 @@ class Skill:
 
 
 class SkillLibrary:
-    """Stores and retrieves successful action patterns (inspired by Voyager-VRAM #50).
+    """Stores and retrieves successful action patterns.
 
     When an agent's action gets high reward (>threshold), the (observation, action, reasoning)
     is saved as a reusable skill. On future turns, relevant skills are retrieved to
@@ -142,7 +140,7 @@ class WorkingMemory:
     """Persistent scratchpad that agents can explicitly write to across turns.
 
     Separate from the memory stream — this is structured working memory
-    that the agent controls directly (inspired by Voyager-VRAM #50).
+    that the agent controls directly.
     """
 
     def __init__(self, max_notes: int = 10):
@@ -205,7 +203,6 @@ class MemoryStream:
     - Reflections: higher-level insights derived from observations
     - Plans: what the agent intends to do
 
-    Enhanced with keyword-based semantic retrieval (inspired by Voyager-VRAM #50).
     """
 
     def __init__(self, max_memories: int = 200):

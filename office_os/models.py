@@ -11,6 +11,9 @@ A Smallville-style multi-agent startup simulation where Dev, Marketing,
 Sales, and Content Creator agents collaborate to grow a company.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from pydantic import Field
@@ -42,28 +45,99 @@ class OfficeOsAction(Action):
     )
 
 
+# ---------------------------------------------------------------------------
+# Dataclasses replacing raw dicts throughout the codebase
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ActionResult:
+    """Structured result from executing a simulation action.
+
+    Supports both attribute access (result.success) and dict-style access
+    (result["success"], result.get("detail")) for backward compatibility.
+    """
+
+    agent_id: str = ""
+    action_type: str = ""
+    success: bool = True
+    detail: str = ""
+    parameters: dict = field(default_factory=dict)
+    contract_tier: str | None = None
+    trigger_sheets_sync: bool = False
+
+    # Allow dict-style access for backward compatibility
+    def get(self, key: str, default=None):
+        if key == "_trigger_sheets_sync":
+            return self.trigger_sheets_sync
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str):
+        if key == "_trigger_sheets_sync":
+            return self.trigger_sheets_sync
+        return getattr(self, key)
+
+    def __setitem__(self, key: str, value):
+        if key == "_trigger_sheets_sync":
+            self.trigger_sheets_sync = value
+        else:
+            setattr(self, key, value)
+
+    def __contains__(self, key: str) -> bool:
+        if key == "_trigger_sheets_sync":
+            return True
+        return hasattr(self, key)
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["_trigger_sheets_sync"] = d.pop("trigger_sheets_sync")
+        return d
+
+
+@dataclass
+class ToolCall:
+    """A structured tool invocation from an agent."""
+
+    tool_name: str
+    arguments: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class ToolDefinition:
+    """Schema for a tool available to an agent."""
+
+    name: str
+    description: str
+    parameters: dict = field(default_factory=dict)
+
+    def to_schema(self) -> dict:
+        """Return Anthropic / OpenAI-compatible tool schema."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": {
+                "type": "object",
+                "properties": self.parameters,
+            },
+        }
+
+
+@dataclass
 class RewardBreakdown:
-    """Decomposed reward signals for multi-signal training (inspired by OpsGate #4).
+    """Decomposed reward signals for multi-signal training.
 
     Instead of a single composite reward, each turn produces explicit sub-signals
     that the training pipeline can use separately or combined.
     """
 
-    def __init__(
-        self,
-        format_reward: float = 0.0,
-        role_compliance: float = 0.0,
-        execution_reward: float = 0.0,
-        impact_reward: float = 0.0,
-        collaboration_reward: float = 0.0,
-        efficiency_penalty: float = 0.0,
-    ):
-        self.format_reward = format_reward
-        self.role_compliance = role_compliance
-        self.execution_reward = execution_reward
-        self.impact_reward = impact_reward
-        self.collaboration_reward = collaboration_reward
-        self.efficiency_penalty = efficiency_penalty
+    format_reward: float = 0.0
+    role_compliance: float = 0.0
+    execution_reward: float = 0.0
+    impact_reward: float = 0.0
+    collaboration_reward: float = 0.0
+    efficiency_penalty: float = 0.0
 
     @property
     def total(self) -> float:

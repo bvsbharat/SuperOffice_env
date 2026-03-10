@@ -5,7 +5,7 @@
 
 set -e
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-0.8B}"
 VLLM_PORT="${VLLM_PORT:-8080}"
 TRAIN_PORT="${TRAIN_PORT:-8081}"
 HF_REPO="${HF_REPO:-}"
