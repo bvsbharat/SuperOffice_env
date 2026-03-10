@@ -25,15 +25,15 @@ from fastapi.staticfiles import StaticFiles
 
 # Store config in module-level dict so routes.py can access it
 bridge_config: dict = {
-    "provider": os.environ.get("PROVIDER", "bedrock"),
-    "model": os.environ.get("MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    "provider": os.environ.get("PROVIDER", "art"),
+    "model": os.environ.get("MODEL", "Qwen/Qwen2.5-14B-Instruct"),
     "days": int(os.environ.get("DAYS", "10")),
-    "art_endpoint": os.environ.get("ART_ENDPOINT", ""),
-    "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-3B-Instruct"),
+    "art_endpoint": os.environ.get("ART_ENDPOINT", os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", "")),
+    "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-14B-Instruct"),
     "art_api_key": os.environ.get("ART_API_KEY", ""),
     "aws_region": os.environ.get("AWS_REGION", "us-east-1"),
-    "mode": os.environ.get("SIM_MODE", "llm"),
-    "northflank_endpoint": os.environ.get("NORTHFLANK_ENDPOINT", ""),
+    "mode": os.environ.get("SIM_MODE", "inference"),
+    "northflank_endpoint": os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", ""),
     "train_every": int(os.environ.get("TRAIN_EVERY", "999")),
 }
 

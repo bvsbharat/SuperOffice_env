@@ -136,28 +136,14 @@ _NORTHFLANK_ENDPOINT = os.environ.get(
 
 @router.post("/api/reconfigure")
 async def reconfigure(req: ReconfigureRequest):
-    global _bridge, _active_config
-    import sys as _sys
-    _main = _sys.modules.get("__main__")
-    bc = getattr(_main, "bridge_config", None)
-    if bc is not None:
-        bc["model"] = req.model
-        bc["provider"] = req.provider
-        if req.mode is not None:
-            bc["mode"] = req.mode
-        # When switching to art/inference, set the Northflank endpoint
-        if req.provider == "art":
-            bc["art_endpoint"] = _NORTHFLANK_ENDPOINT
-            bc["art_model"] = req.model
-            bc["art_api_key"] = ""
-        if req.mode == "inference":
-            bc["northflank_endpoint"] = _NORTHFLANK_ENDPOINT
-    # Track new config immediately so /api/config reflects it without needing a reset
-    new_mode = req.mode or _active_config.get("mode", "llm")
-    _active_config = {"model": req.model, "provider": req.provider, "mode": new_mode}
-    # Destroy current bridge so next reset picks up new config
-    _bridge = None
-    return {"provider": req.provider, "model": req.model, "mode": new_mode, "status": "reconfigured"}
+    # Model switching is locked — always use the server-configured trained model
+    return {
+        "provider": _active_config["provider"],
+        "model": _active_config["model"],
+        "mode": _active_config["mode"],
+        "status": "locked",
+        "message": "Model is locked to the trained model on this deployment.",
+    }
 
 
 @router.get("/api/training-status")
