@@ -56,11 +56,6 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Serve built frontend if it exists
-dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-if os.path.isdir(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
-
 
 @app.get("/health")
 async def health():
@@ -70,6 +65,13 @@ async def health():
         "provider": bridge_config["provider"],
         "days": bridge_config["days"],
     }
+
+
+# Serve built frontend if it exists (must be AFTER all route definitions
+# because mount("/") is a catch-all that would shadow later routes)
+dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(dist_path):
+    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
 
 
 def main():
