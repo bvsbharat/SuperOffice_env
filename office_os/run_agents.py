@@ -2,7 +2,7 @@
 """
 Run the Office OS multi-agent simulation.
 
-This script orchestrates 4 LLM-powered agents (Dev, Marketing, Sales, Content)
+This script orchestrates 7 LLM-powered agents (CEO, Dev, Marketing, Sales, Content, HR, Customer)
 taking turns in a simulated startup environment. Each agent uses Claude to
 decide actions based on their observations.
 
@@ -19,6 +19,12 @@ Usage:
 
     # Use a specific model / run for N days:
     python run_agents.py --local --model claude-haiku-4-5-20251001 --days 30
+
+    # Run with DPO pair generation (parallel comparison runs):
+    python run_agents.py --local --dpo-runs 2
+
+    # Mine training scenarios from simulation data:
+    python run_agents.py --local --mine-scenarios
 
 Environment variables:
     ANTHROPIC_API_KEY: Required for direct Anthropic API
@@ -58,12 +64,15 @@ logger = logging.getLogger(__name__)
 
 
 def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
-              reflect_every: int = 10, provider: str = "anthropic", aws_region: str = "us-east-1"):
+              reflect_every: int = 10, provider: str = "anthropic", aws_region: str = "us-east-1",
+              mine_scenarios: bool = False, seed: int | None = None):
     """Run the simulation locally without a server."""
     from server.office_os_environment import OfficeOsEnvironment
     from models import OfficeOsAction
+    from training.collector import TrajectoryCollector, ScenarioMiner
 
-    env = OfficeOsEnvironment()
+    collector = TrajectoryCollector()
+    env = OfficeOsEnvironment(seed=seed)
     obs = env.reset()
 
     # Create LLM agents
@@ -75,6 +84,7 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
     logger.info("=" * 60)
     logger.info("Office OS Simulation Started")
     logger.info(f"Model: {model} | Provider: {provider} | Days: {days} | Agents: {', '.join(AGENT_ROLES)}")
+    logger.info(f"Features: adversarial_curriculum=ON | personality_modeling=ON | skill_library=ON | perturbations=ON")
     logger.info("=" * 60)
 
     turn = 0
@@ -113,6 +123,39 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
         logger.info(f"  Result [{status}]: {result.get('detail', '')}")
         logger.info(f"  Reward: {obs.reward}")
 
+        # Track reward in adversarial designer
+        if hasattr(env, '_simulator') and hasattr(env._simulator, 'adversarial_designer'):
+            env._simulator.adversarial_designer.track_reward(
+                role, obs.reward, action_dict.get("action_type", "")
+            )
+
+        # Record skill if high reward
+        if obs.reward > 5.0:
+            agent.base.record_skill(
+                observation=str(obs_dict.get("role_data", "")),
+                action_type=action_dict.get("action_type", ""),
+                target=action_dict.get("target", ""),
+                parameters=action_dict.get("parameters", {}),
+                reasoning=action_dict.get("reasoning", ""),
+                reward=obs.reward,
+                turn=turn,
+            )
+
+        # Collect trajectory with decomposed rewards
+        reward_breakdown = {}
+        if hasattr(obs, 'reward_breakdown'):
+            reward_breakdown = obs.reward_breakdown
+        collector.record(
+            role=role,
+            system_prompt=agent.last_system_prompt if hasattr(agent, 'last_system_prompt') else "",
+            user_message=str(obs_dict),
+            assistant_response=action_dict,
+            reward=obs.reward,
+            day=obs.day,
+            turn=turn,
+            reward_breakdown=reward_breakdown,
+        )
+
         # Periodic reflection (every N turns per agent)
         if turn % (reflect_every * len(AGENT_ROLES)) == 0:
             for r, a in agents.items():
@@ -129,6 +172,10 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
             logger.info(f"  Pipeline: ${kpis['pipeline_value']:,.0f} | Customers: {kpis['active_customers']}")
             logger.info(f"  Features: {kpis['features_shipped']} | Content: {kpis['content_published']}")
             logger.info(f"  Budget: ${kpis['budget_remaining']:,.0f}")
+            # Log adversarial stats
+            if hasattr(env, '_simulator') and hasattr(env._simulator, 'adversarial_designer'):
+                adv = env._simulator.adversarial_designer.get_stats()
+                logger.info(f"  Adversarial difficulty: {adv['difficulty_level']:.2f}")
             logger.info(f"{'='*60}\n")
 
     # Final summary
@@ -142,13 +189,56 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
     logger.info(f"Customers Won: {len([c for c in env._market.customers if c.stage == 'closed_won'])}")
     logger.info(f"Customers Lost: {len([c for c in env._market.customers if c.stage == 'closed_lost'])}")
 
-    # Print agent memories
+    # Print agent memories and skill libraries
     for role, agent in agents.items():
         ctx = agent.base.get_context(turn)
         reflections = ctx.get("recent_reflections", [])
         logger.info(f"\n[{agent.base.name}] Final reflections:")
         for r in reflections:
             logger.info(f"  - {r}")
+        if "skill_library" in ctx:
+            logger.info(f"  Skills learned: {ctx['skill_library']['summary']}")
+
+    # Save trajectories
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_data")
+    collector.save_jsonl(os.path.join(data_dir, "trajectories.jsonl"))
+
+    # Mine scenarios if requested
+    if mine_scenarios:
+        miner = ScenarioMiner()
+        scenarios = miner.mine(collector)
+        if scenarios:
+            miner.save(os.path.join(data_dir, "mined_scenarios.jsonl"))
+            logger.info(f"Mined {len(scenarios)} training scenarios from critical moments")
+
+    return collector
+
+
+def run_dpo(days: int, model: str, n_runs: int = 2, provider: str = "anthropic", aws_region: str = "us-east-1"):
+    """Run parallel simulations for DPO pair generation (inspired by AlphaWolf #77)."""
+    from training.collector import DPOPairCollector
+
+    logger.info(f"Running {n_runs} parallel simulations for DPO pair generation...")
+    collectors = []
+    for i in range(n_runs):
+        logger.info(f"\n{'='*60}")
+        logger.info(f"DPO Run {i+1}/{n_runs} (seed={i*42})")
+        logger.info(f"{'='*60}")
+        collector = run_local(
+            days=days, model=model, provider=provider, aws_region=aws_region,
+            seed=i * 42,
+        )
+        collectors.append(collector)
+
+    # Generate DPO pairs by comparing runs
+    dpo = DPOPairCollector()
+    for i in range(len(collectors)):
+        for j in range(i + 1, len(collectors)):
+            dpo.compare_runs(collectors[i], collectors[j])
+
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_data")
+    dpo.save(os.path.join(data_dir, "dpo_pairs.jsonl"))
+    logger.info(f"Generated {dpo.total_pairs()} DPO training pairs across {n_runs} runs")
 
 
 def run_server(server_url: str, days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
@@ -224,6 +314,10 @@ def main():
     parser.add_argument("--reflect-every", type=int, default=10, help="Reflect every N turns per agent")
     parser.add_argument("--bedrock", action="store_true", help="Use AWS Bedrock instead of Anthropic API")
     parser.add_argument("--aws-region", type=str, default="us-east-1", help="AWS region for Bedrock (default: us-east-1)")
+    # New flags for improvements
+    parser.add_argument("--dpo-runs", type=int, default=0, help="Number of parallel runs for DPO pair generation (0=disabled)")
+    parser.add_argument("--mine-scenarios", action="store_true", help="Mine critical decision points as training scenarios")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     args = parser.parse_args()
 
     if not args.server and not args.local:
@@ -254,9 +348,13 @@ def main():
             args.model = f"us.anthropic.{args.model}-v1:0"
         logger.info(f"Using AWS Bedrock (region: {args.aws_region})")
 
-    if args.local:
+    if args.dpo_runs > 1:
+        run_dpo(days=args.days, model=args.model, n_runs=args.dpo_runs,
+                provider=provider, aws_region=args.aws_region)
+    elif args.local:
         run_local(days=args.days, model=args.model, reflect_every=args.reflect_every,
-                  provider=provider, aws_region=args.aws_region)
+                  provider=provider, aws_region=args.aws_region,
+                  mine_scenarios=args.mine_scenarios, seed=args.seed)
     else:
         run_server(server_url=args.server, days=args.days, model=args.model,
                    provider=provider, aws_region=args.aws_region)

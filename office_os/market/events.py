@@ -1,8 +1,12 @@
-"""Dynamic market event generator."""
+"""Dynamic market event generator with adversarial curriculum design.
+
+Includes the AdversarialEventDesigner (inspired by Kube SRE Gym #51 winner)
+which analyzes agent performance and generates targeted challenges.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import uuid4
 
 from .state import Customer, MarketState
@@ -390,3 +394,406 @@ class EventEngine:
             state.day, state.turn,
         )
         event.effects = {"media_boost": True}
+
+
+# ── Adversarial Curriculum Designer (inspired by Kube SRE Gym #51) ────────
+
+ADVERSARIAL_TEMPLATES = {
+    "sales_too_easy": [
+        {
+            "name": "Competitor Undercut",
+            "description": "A competitor is offering 40% discount to your pipeline leads.",
+            "apply": "_adv_competitor_undercut",
+        },
+        {
+            "name": "Budget Freeze",
+            "description": "Several prospects announced budget freezes due to market uncertainty.",
+            "apply": "_adv_budget_freeze",
+        },
+    ],
+    "dev_ignoring_stability": [
+        {
+            "name": "Critical Production Outage",
+            "description": "Major production outage reported. Multiple customers affected.",
+            "apply": "_adv_critical_outage",
+        },
+        {
+            "name": "Security Vulnerability",
+            "description": "Security researcher reported a critical vulnerability in your API.",
+            "apply": "_adv_security_vuln",
+        },
+    ],
+    "marketing_overspending": [
+        {
+            "name": "Budget Audit",
+            "description": "Board is auditing marketing spend. ROI per campaign under scrutiny.",
+            "apply": "_adv_budget_audit",
+        },
+        {
+            "name": "Ad Platform Rate Hike",
+            "description": "Ad platform increased CPM by 50%. Campaign costs are rising.",
+            "apply": "_adv_ad_rate_hike",
+        },
+    ],
+    "content_stagnating": [
+        {
+            "name": "Content Fatigue",
+            "description": "Blog traffic dropping. Audience wants fresh, differentiated content.",
+            "apply": "_adv_content_fatigue",
+        },
+    ],
+    "low_collaboration": [
+        {
+            "name": "Team Misalignment",
+            "description": "CEO noticed departments working in silos. Alignment meeting required.",
+            "apply": "_adv_team_misalignment",
+        },
+    ],
+}
+
+
+class AdversarialEventDesigner:
+    """Analyzes agent performance and generates targeted challenges.
+
+    Tracks per-role cumulative rewards and weaknesses, then injects events
+    that specifically target areas where agents are performing too well
+    (to prevent exploitation) or too poorly (to force learning).
+
+    Difficulty escalates as cumulative reward increases.
+    """
+
+    def __init__(self):
+        self.cfg = Config()
+        self._cumulative_rewards: dict[str, float] = {}
+        self._action_counts: dict[str, dict[str, int]] = {}  # role -> {action: count}
+        self._difficulty_level: float = 1.0
+
+    def track_reward(self, role: str, reward: float, action_type: str = ""):
+        """Track an agent's reward and action for weakness analysis."""
+        self._cumulative_rewards[role] = self._cumulative_rewards.get(role, 0.0) + reward
+        if action_type:
+            role_actions = self._action_counts.setdefault(role, {})
+            role_actions[action_type] = role_actions.get(action_type, 0) + 1
+
+        # Escalate difficulty based on total cumulative reward
+        total_reward = sum(self._cumulative_rewards.values())
+        escalation_steps = max(0, total_reward / self.cfg.adversarial_reward_threshold)
+        self._difficulty_level = 1.0 + escalation_steps * self.cfg.adversarial_escalation_rate
+
+    def generate_events(self, state: MarketState) -> list[MarketEvent]:
+        """Analyze performance and generate targeted adversarial events."""
+        if not self.cfg.adversarial_enabled:
+            return []
+
+        # Only check at start of day
+        if state.turn % 10 != 0 or state.turn == 0:
+            return []
+
+        prob = self.cfg.adversarial_base_probability * self._difficulty_level
+        if state._rng.random() > prob:
+            return []
+
+        weaknesses = self._identify_weaknesses(state)
+        if not weaknesses:
+            return []
+
+        # Pick a weakness to target
+        weakness = state._rng.choice(weaknesses)
+        templates = ADVERSARIAL_TEMPLATES.get(weakness, [])
+        if not templates:
+            return []
+
+        template = state._rng.choice(templates)
+        event = MarketEvent(
+            id=str(uuid4())[:8],
+            name=f"[ADVERSARIAL] {template['name']}",
+            description=template["description"],
+            day=state.day,
+            effects={"adversarial": True, "weakness_targeted": weakness, "difficulty": self._difficulty_level},
+        )
+
+        handler = getattr(self, template["apply"], None)
+        if handler:
+            handler(state, event)
+
+        state.active_events.append({
+            "id": event.id,
+            "name": event.name,
+            "description": event.description,
+            "day": event.day,
+        })
+
+        return [event]
+
+    def _identify_weaknesses(self, state: MarketState) -> list[str]:
+        """Identify agent weaknesses to target."""
+        weaknesses = []
+
+        # Sales closing too easily: high close rate without much effort
+        sales_reward = self._cumulative_rewards.get("sales", 0)
+        sales_actions = self._action_counts.get("sales", {})
+        close_count = sales_actions.get("CLOSE_DEAL", 0)
+        if sales_reward > 15 and close_count > 2:
+            weaknesses.append("sales_too_easy")
+
+        # Dev ignoring stability: many features but low stability
+        if state.product_stability < 0.6 and len(state.shipped_features()) > 2:
+            weaknesses.append("dev_ignoring_stability")
+
+        # Marketing overspending: low budget, many campaigns
+        marketing_actions = self._action_counts.get("marketing", {})
+        campaign_count = marketing_actions.get("LAUNCH_CAMPAIGN", 0) + marketing_actions.get("RUN_AD", 0)
+        if state.budget_remaining < 5000 and campaign_count > 3:
+            weaknesses.append("marketing_overspending")
+
+        # Content stagnating: low traffic growth despite content
+        if len([p for p in state.content_pieces if p.published]) > 3 and state.website_traffic < 2000:
+            weaknesses.append("content_stagnating")
+
+        # Low collaboration: check shared memory for cross-role communication
+        recent_entries = state.shared_memory.entries[-20:] if state.shared_memory.entries else []
+        unique_authors = set(e.author for e in recent_entries)
+        if len(unique_authors) < 3 and state.day > 5:
+            weaknesses.append("low_collaboration")
+
+        return weaknesses
+
+    def get_stats(self) -> dict:
+        return {
+            "difficulty_level": round(self._difficulty_level, 2),
+            "cumulative_rewards": {k: round(v, 2) for k, v in self._cumulative_rewards.items()},
+            "action_counts": dict(self._action_counts),
+        }
+
+    # ── Adversarial event handlers ────────────────────────────────
+
+    def _adv_competitor_undercut(self, state: MarketState, event: MarketEvent):
+        for c in state.active_leads():
+            if state._rng.random() < 0.3:
+                c.objections.append("Competitor offering 40% discount")
+                c.satisfaction = max(0, c.satisfaction - 0.15)
+        event.effects["leads_threatened"] = len(state.active_leads())
+
+    def _adv_budget_freeze(self, state: MarketState, event: MarketEvent):
+        for c in state.active_leads():
+            if c.stage in ("proposal", "negotiation") and state._rng.random() < 0.4:
+                c.objections.append("Budget freeze — decision delayed")
+        state.shared_memory.post(
+            "system", "alert",
+            "MARKET: Multiple prospects reporting budget freezes. Sales cycle may extend.",
+            state.day, state.turn,
+        )
+
+    def _adv_critical_outage(self, state: MarketState, event: MarketEvent):
+        state.product_stability = max(0.2, state.product_stability - 0.25)
+        state.nps_score = max(0, state.nps_score - 15)
+        state.customer_satisfaction = max(0, state.customer_satisfaction - 0.2)
+        state.bug_reports.append({
+            "id": f"outage-{state.day}",
+            "name": "Critical production outage",
+            "severity": "critical",
+            "reported_day": state.day,
+        })
+        state.shared_memory.post(
+            "system", "alert",
+            "OUTAGE: Critical production issue. All hands on deck. Dev must prioritize stability.",
+            state.day, state.turn,
+        )
+
+    def _adv_security_vuln(self, state: MarketState, event: MarketEvent):
+        state.product_stability = max(0.3, state.product_stability - 0.15)
+        state.bug_reports.append({
+            "id": f"sec-{state.day}",
+            "name": "Critical API security vulnerability",
+            "severity": "critical",
+            "reported_day": state.day,
+        })
+        for c in state.active_leads():
+            if c.company_size == "enterprise":
+                c.objections.append("Concerned about security vulnerability")
+
+    def _adv_budget_audit(self, state: MarketState, event: MarketEvent):
+        state.shared_memory.post(
+            "system", "alert",
+            "AUDIT: Board reviewing marketing ROI. Justify all campaign spend. Consider organic channels.",
+            state.day, state.turn,
+        )
+        # Reduce budget as a penalty for overspending
+        cut = state.budget_remaining * 0.15
+        state.budget_remaining -= cut
+        event.effects["budget_cut"] = cut
+
+    def _adv_ad_rate_hike(self, state: MarketState, event: MarketEvent):
+        state.shared_memory.post(
+            "system", "alert",
+            "COST ALERT: Ad platform CPM increased 50%. Consider shifting to content-driven leads.",
+            state.day, state.turn,
+        )
+
+    def _adv_content_fatigue(self, state: MarketState, event: MarketEvent):
+        state.website_traffic = max(500, state.website_traffic - state._rng.randint(200, 500))
+        state.brand_awareness = max(0, state.brand_awareness - 3)
+        state.shared_memory.post(
+            "system", "insight",
+            "ANALYTICS: Blog engagement dropping. Audience wants case studies and data-driven content.",
+            state.day, state.turn,
+        )
+
+    def _adv_team_misalignment(self, state: MarketState, event: MarketEvent):
+        state.team_velocity = max(0.5, state.team_velocity - 0.15)
+        state.shared_memory.post(
+            "system", "alert",
+            "CEO NOTICE: Departments working in silos. Need cross-team coordination. HR: schedule alignment meeting.",
+            state.day, state.turn,
+        )
+
+
+# ── Environment Perturbation / Schema Drift (inspired by DriftPA #104) ────
+
+PERTURBATION_TEMPLATES = [
+    {
+        "name": "Action Rename: CLOSE_DEAL → FINALIZE_CONTRACT",
+        "description": "Process change: CLOSE_DEAL has been renamed to FINALIZE_CONTRACT. Update your workflow.",
+        "type": "action_drift",
+        "role": "sales",
+        "old_action": "CLOSE_DEAL",
+        "new_action": "FINALIZE_CONTRACT",
+    },
+    {
+        "name": "KPI Shift: New OKRs",
+        "description": "CEO announced new quarterly OKRs. Revenue weight increased, traffic weight decreased.",
+        "type": "kpi_shift",
+    },
+    {
+        "name": "Tool Failure: Google Sheets Down",
+        "description": "Google Sheets integration is down. UPDATE_SHEET will fail until restored.",
+        "type": "tool_failure",
+        "role": "sales",
+        "disabled_action": "UPDATE_SHEET",
+    },
+    {
+        "name": "Policy Change: Deal Approval Required",
+        "description": "New policy: Deals over $50K require CEO approval before closing.",
+        "type": "policy_change",
+    },
+    {
+        "name": "Action Rename: LAUNCH_CAMPAIGN → RUN_CAMPAIGN",
+        "description": "Marketing tools updated: LAUNCH_CAMPAIGN renamed to RUN_CAMPAIGN.",
+        "type": "action_drift",
+        "role": "marketing",
+        "old_action": "LAUNCH_CAMPAIGN",
+        "new_action": "RUN_CAMPAIGN",
+    },
+]
+
+
+class PerturbationEngine:
+    """Injects mid-episode structural changes that test agent adaptability.
+
+    Inspired by DriftPA #104 and Executive Inbox #90:
+    - Action drift: rename actions mid-episode
+    - KPI shift: change reward weights
+    - Tool failure: disable specific actions temporarily
+    - Policy change: add new constraints
+    """
+
+    def __init__(self):
+        self.cfg = Config()
+        self._active_perturbations: list[dict] = []
+        self._action_renames: dict[str, dict[str, str]] = {}  # role -> {old: new}
+        self._disabled_actions: dict[str, set[str]] = {}       # role -> {action}
+        self._approval_required_threshold: float = 0.0         # Deal threshold needing approval
+        self._perturbation_day: int = 0
+
+    def tick(self, state: MarketState) -> list[MarketEvent]:
+        """Check if a perturbation should fire. One perturbation per episode max."""
+        if self._active_perturbations:
+            # Restore tool failures after 5 days
+            for p in self._active_perturbations:
+                if p.get("type") == "tool_failure" and state.day - self._perturbation_day >= 5:
+                    role = p.get("role", "")
+                    action = p.get("disabled_action", "")
+                    if role in self._disabled_actions:
+                        self._disabled_actions[role].discard(action)
+                    state.shared_memory.post(
+                        "system", "update",
+                        f"RESTORED: {action} is working again for {role}.",
+                        state.day, state.turn,
+                    )
+                    self._active_perturbations.remove(p)
+            return []
+
+        # Only fire perturbations between day 8 and day 20
+        if state.day < 8 or state.day > 20:
+            return []
+
+        # 10% chance per day at day start
+        if state.turn % 10 != 0 or state.turn == 0:
+            return []
+        if state._rng.random() > 0.10:
+            return []
+
+        template = state._rng.choice(PERTURBATION_TEMPLATES)
+        event = MarketEvent(
+            id=str(uuid4())[:8],
+            name=f"[PERTURBATION] {template['name']}",
+            description=template["description"],
+            day=state.day,
+            effects={"perturbation": True, "type": template["type"]},
+        )
+
+        self._perturbation_day = state.day
+        self._active_perturbations.append(template)
+
+        if template["type"] == "action_drift":
+            role = template["role"]
+            old = template["old_action"]
+            new = template["new_action"]
+            self._action_renames.setdefault(role, {})[old] = new
+            # Actually add the new action to ROLE_ACTIONS at runtime
+            from .config import ROLE_ACTIONS
+            if new not in ROLE_ACTIONS.get(role, []):
+                ROLE_ACTIONS[role].append(new)
+
+        elif template["type"] == "tool_failure":
+            role = template["role"]
+            action = template["disabled_action"]
+            self._disabled_actions.setdefault(role, set()).add(action)
+
+        elif template["type"] == "policy_change":
+            self._approval_required_threshold = 50000.0
+
+        elif template["type"] == "kpi_shift":
+            # Shift doesn't modify code, just announces new priorities
+            pass
+
+        state.active_events.append({
+            "id": event.id,
+            "name": event.name,
+            "description": event.description,
+            "day": event.day,
+        })
+        state.shared_memory.post(
+            "system", "alert",
+            f"PERTURBATION: {template['description']}",
+            state.day, state.turn,
+        )
+
+        return [event]
+
+    def translate_action(self, role: str, action_type: str) -> str:
+        """Translate a renamed action back to its original name for processing."""
+        renames = self._action_renames.get(role, {})
+        # Reverse lookup: if agent uses new name, translate to old
+        for old, new in renames.items():
+            if action_type == new:
+                return old
+        return action_type
+
+    def is_action_disabled(self, role: str, action_type: str) -> bool:
+        """Check if an action is temporarily disabled."""
+        return action_type in self._disabled_actions.get(role, set())
+
+    def requires_approval(self, deal_value: float) -> bool:
+        """Check if a deal requires CEO approval under current policy."""
+        return self._approval_required_threshold > 0 and deal_value >= self._approval_required_threshold

@@ -17,7 +17,7 @@ import logging
 import os
 from typing import Any
 
-from .collector import TrajectoryCollector, TurnRecord
+from .collector import DPOPairCollector, TrajectoryCollector, TurnRecord
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,41 @@ class RemoteTrainer:
     def is_role_trained(self, role: str) -> bool:
         """Check if a role has been trained at least once."""
         return self._train_step.get(role, 0) > 0
+
+    async def train_role_dpo(self, role: str, dpo_collector: DPOPairCollector) -> dict:
+        """Train a role using DPO pairs (inspired by AlphaWolf #77)."""
+        pairs = dpo_collector.pairs.get(role, [])
+        if len(pairs) < 5:
+            return {"status": "skipped", "role": role, "reason": f"only {len(pairs)} DPO pairs (need 5+)"}
+
+        train_endpoint = os.environ.get("NORTHFLANK_TRAIN_ENDPOINT", "")
+        if not train_endpoint and self.northflank_endpoint:
+            train_endpoint = self.northflank_endpoint
+        if not train_endpoint:
+            return {"status": "skipped", "role": role, "reason": "no training endpoint"}
+
+        try:
+            import httpx
+
+            train_url = f"{train_endpoint.rstrip('/')}/train-dpo"
+            payload = {
+                "role": role,
+                "base_model": self.base_model,
+                "learning_rate": self.learning_rate * 0.1,  # Lower LR for DPO
+                "pairs": pairs[:100],  # Cap at 100 pairs per batch
+            }
+
+            async with httpx.AsyncClient(timeout=600) as client:
+                resp = await client.post(train_url, json=payload)
+                resp.raise_for_status()
+                result = resp.json()
+
+            logger.info(f"DPO training complete for {role}: {result}")
+            return {"status": "trained_dpo", "role": role, "pairs_used": len(pairs), **result}
+
+        except Exception as e:
+            logger.warning(f"DPO training failed for {role}: {e}")
+            return {"status": "error", "role": role, "error": str(e)}
 
     def get_training_stats(self) -> dict:
         """Get training statistics for all roles."""
