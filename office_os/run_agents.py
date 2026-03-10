@@ -20,9 +20,6 @@ Usage:
     # Use a specific model / run for N days:
     python run_agents.py --local --model claude-haiku-4-5-20251001 --days 30
 
-    # Run with DPO pair generation (parallel comparison runs):
-    python run_agents.py --local --dpo-runs 2
-
     # Mine training scenarios from simulation data:
     python run_agents.py --local --mine-scenarios
 
@@ -214,33 +211,6 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
     return collector
 
 
-def run_dpo(days: int, model: str, n_runs: int = 2, provider: str = "anthropic", aws_region: str = "us-east-1"):
-    """Run parallel simulations for DPO pair generation (inspired by AlphaWolf #77)."""
-    from training.collector import DPOPairCollector
-
-    logger.info(f"Running {n_runs} parallel simulations for DPO pair generation...")
-    collectors = []
-    for i in range(n_runs):
-        logger.info(f"\n{'='*60}")
-        logger.info(f"DPO Run {i+1}/{n_runs} (seed={i*42})")
-        logger.info(f"{'='*60}")
-        collector = run_local(
-            days=days, model=model, provider=provider, aws_region=aws_region,
-            seed=i * 42,
-        )
-        collectors.append(collector)
-
-    # Generate DPO pairs by comparing runs
-    dpo = DPOPairCollector()
-    for i in range(len(collectors)):
-        for j in range(i + 1, len(collectors)):
-            dpo.compare_runs(collectors[i], collectors[j])
-
-    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_data")
-    dpo.save(os.path.join(data_dir, "dpo_pairs.jsonl"))
-    logger.info(f"Generated {dpo.total_pairs()} DPO training pairs across {n_runs} runs")
-
-
 def run_server(server_url: str, days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
                provider: str = "anthropic", aws_region: str = "us-east-1"):
     """Run agents against the environment server via WebSocket."""
@@ -315,7 +285,6 @@ def main():
     parser.add_argument("--bedrock", action="store_true", help="Use AWS Bedrock instead of Anthropic API")
     parser.add_argument("--aws-region", type=str, default="us-east-1", help="AWS region for Bedrock (default: us-east-1)")
     # New flags for improvements
-    parser.add_argument("--dpo-runs", type=int, default=0, help="Number of parallel runs for DPO pair generation (0=disabled)")
     parser.add_argument("--mine-scenarios", action="store_true", help="Mine critical decision points as training scenarios")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     args = parser.parse_args()
@@ -348,10 +317,7 @@ def main():
             args.model = f"us.anthropic.{args.model}-v1:0"
         logger.info(f"Using AWS Bedrock (region: {args.aws_region})")
 
-    if args.dpo_runs > 1:
-        run_dpo(days=args.days, model=args.model, n_runs=args.dpo_runs,
-                provider=provider, aws_region=args.aws_region)
-    elif args.local:
+    if args.local:
         run_local(days=args.days, model=args.model, reflect_every=args.reflect_every,
                   provider=provider, aws_region=args.aws_region,
                   mine_scenarios=args.mine_scenarios, seed=args.seed)

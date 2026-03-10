@@ -130,10 +130,6 @@ class OfficeOsEnvironment(Environment):
         adv_events = self._simulator.adversarial_designer.generate_events(self._market)
         new_events.extend(adv_events)
 
-        # Environment perturbation events (schema drift, tool failures)
-        pert_events = self._simulator.perturbation_engine.tick(self._market)
-        new_events.extend(pert_events)
-
         # Advance simulation clock
         self._simulator.advance()
 
