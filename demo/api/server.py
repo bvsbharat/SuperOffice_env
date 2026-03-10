@@ -19,9 +19,11 @@ import sys
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+from analytics import track_view
 
 # Store config in module-level dict so routes.py can access it
 bridge_config: dict = {
@@ -55,6 +57,14 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+@app.middleware("http")
+async def analytics_middleware(request: Request, call_next):
+    """Track every request for lightweight analytics."""
+    ip = request.client.host if request.client else "unknown"
+    track_view(ip)
+    return await call_next(request)
 
 
 @app.get("/health")

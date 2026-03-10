@@ -12,10 +12,11 @@ import logging
 import os
 from typing import Any, Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
 from rl_bridge import OfficeOsBridge
+from analytics import track_step as _track_step, track_reset as _track_reset, track_endpoint, get_summary as get_analytics_summary
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,9 @@ def _get_bridge() -> OfficeOsBridge:
 # --- REST Endpoints ---
 
 @router.post("/api/reset")
-async def reset():
+async def reset(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    _track_reset(ip)
     bridge = _get_bridge()
     loop = asyncio.get_event_loop()
     state = await loop.run_in_executor(None, bridge.reset)
@@ -79,7 +82,9 @@ async def reset():
 
 
 @router.post("/api/step")
-async def step():
+async def step(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    _track_step(ip)
     bridge = _get_bridge()
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, bridge.step)
@@ -302,6 +307,12 @@ async def validate_rubric():
             yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.get("/api/analytics")
+async def analytics():
+    """Return lightweight analytics summary (views, visitors, steps, trend)."""
+    return get_analytics_summary()
 
 
 @router.get("/api/scenarios")
