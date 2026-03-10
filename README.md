@@ -9,7 +9,7 @@
 [![Built on OpenEnv](https://img.shields.io/badge/Built%20on-OpenEnv-blue)](https://github.com/meta-pytorch/OpenEnv)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green)](https://python.org)
 [![React + Phaser + Three.js](https://img.shields.io/badge/Frontend-React%20%2B%20Phaser%20%2B%20Three.js-61DAFB)](https://reactjs.org)
-[![License: BSD-3](https://img.shields.io/badge/License-BSD--3-orange)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange)](LICENSE)
 [![Trained LoRA Adapters](https://img.shields.io/badge/HuggingFace-LoRA%20Adapters-yellow)](https://huggingface.co/HarshalH/office-os-loras)
 [![Demo Video](https://img.shields.io/badge/Demo-YouTube-red)](https://youtu.be/dfWrsrGQCQo)
 
