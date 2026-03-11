@@ -1,6 +1,6 @@
 <div align="center">
 
-# O2 OpenOffice
+# OpenOffice RL
 
 ### Multi-Agent Reinforcement Learning Environment for Organizational Decision-Making
 
