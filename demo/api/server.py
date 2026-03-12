@@ -25,15 +25,15 @@ from fastapi.staticfiles import StaticFiles
 
 # Store config in module-level dict so routes.py can access it
 bridge_config: dict = {
-    "provider": os.environ.get("PROVIDER", "bedrock"),
-    "model": os.environ.get("MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    "provider": os.environ.get("PROVIDER", "art"),
+    "model": os.environ.get("MODEL", "Qwen/Qwen2.5-14B-Instruct"),
     "days": int(os.environ.get("DAYS", "10")),
-    "art_endpoint": os.environ.get("ART_ENDPOINT", ""),
-    "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-3B-Instruct"),
+    "art_endpoint": os.environ.get("ART_ENDPOINT", os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", "")),
+    "art_model": os.environ.get("ART_MODEL", "Qwen/Qwen2.5-14B-Instruct"),
     "art_api_key": os.environ.get("ART_API_KEY", ""),
     "aws_region": os.environ.get("AWS_REGION", "us-east-1"),
-    "mode": os.environ.get("SIM_MODE", "llm"),
-    "northflank_endpoint": os.environ.get("NORTHFLANK_ENDPOINT", ""),
+    "mode": os.environ.get("SIM_MODE", "inference"),
+    "northflank_endpoint": os.environ.get("NORTHFLANK_INFERENCE_ENDPOINT", ""),
     "train_every": int(os.environ.get("TRAIN_EVERY", "999")),
 }
 
@@ -56,11 +56,6 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Serve built frontend if it exists
-dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-if os.path.isdir(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
-
 
 @app.get("/health")
 async def health():
@@ -72,24 +67,31 @@ async def health():
     }
 
 
+# Serve built frontend if it exists (must be AFTER all route definitions
+# because mount("/") is a catch-all that would shadow later routes)
+dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(dist_path):
+    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SuperOffice GTM Demo Server")
-    parser.add_argument("--provider", choices=["bedrock", "art"], default="bedrock",
-                        help="LLM provider (default: bedrock)")
-    parser.add_argument("--model", type=str, default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        help="Model name (default: global.anthropic.claude-haiku-4-5-20251001-v1:0)")
+    parser.add_argument("--provider", choices=["bedrock", "art"], default=bridge_config["provider"],
+                        help="LLM provider")
+    parser.add_argument("--model", type=str, default=bridge_config["model"],
+                        help="Model name")
     parser.add_argument("--days", type=int, default=10,
                         help="Days to simulate per episode (default: 10)")
     parser.add_argument("--art-endpoint", type=str, default="",
                         help="ART/vLLM endpoint URL")
-    parser.add_argument("--art-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
+    parser.add_argument("--art-model", type=str, default=bridge_config["art_model"],
                         help="Model name on the vLLM endpoint")
     parser.add_argument("--art-api-key", type=str, default="",
                         help="API key for ART endpoint")
     parser.add_argument("--aws-region", type=str, default="us-east-1",
                         help="AWS region for Bedrock")
-    parser.add_argument("--mode", choices=["llm", "training", "inference"], default="llm",
-                        help="Simulation mode: llm (default), training (collect trajectories), inference (use trained LoRA)")
+    parser.add_argument("--mode", choices=["llm", "training", "inference"], default=bridge_config["mode"],
+                        help="Simulation mode")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank vLLM endpoint for training/inference")
     parser.add_argument("--train-every", type=int, default=999,

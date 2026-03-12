@@ -53,10 +53,11 @@ class OfficeOsEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self, scenario: str = "baseline"):
+    def __init__(self, scenario: str = "baseline", seed: int | None = None):
         self._scenario = scenario
+        self._seed = seed
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial(scenario=scenario)
+        self._market = MarketState.initial(scenario=scenario, seed=seed)
         self._simulator = MarketSimulator(self._market)
         self._events = EventEngine(scenario_name=scenario)
         self._rewards = RewardCalculator()
@@ -66,7 +67,7 @@ class OfficeOsEnvironment(Environment):
     def reset(self) -> OfficeOsObservation:
         """Reset the environment to day 1 of a new startup quarter."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._market = MarketState.initial(scenario=self._scenario)
+        self._market = MarketState.initial(scenario=self._scenario, seed=self._seed)
         self._simulator = MarketSimulator(self._market)
         self._events = EventEngine(scenario_name=self._scenario)
         self._rewards = RewardCalculator()
@@ -125,15 +126,20 @@ class OfficeOsEnvironment(Environment):
         # Process market events
         new_events = self._events.tick(self._market)
 
+        # Adversarial curriculum events (targeted challenges based on performance)
+        adv_events = self._simulator.adversarial_designer.generate_events(self._market)
+        new_events.extend(adv_events)
+
         # Advance simulation clock
         self._simulator.advance()
 
-        # Calculate reward for this agent
-        reward = self._rewards.calculate(
+        # Calculate decomposed reward for this agent
+        reward_breakdown = self._rewards.calculate_decomposed(
             state=self._market,
             agent_id=action.agent_id,
             action_result=action_result,
         )
+        reward = reward_breakdown["total"]
 
         # Sync sheets if sales agent triggered UPDATE_SHEET
         if action_result.get("_trigger_sheets_sync"):
@@ -288,6 +294,8 @@ class OfficeOsEnvironment(Environment):
                     "days_since_contact": self._market.day - c.last_contacted_day,
                     "content_touchpoints": c.content_touchpoints,
                     "objections": c.objections,
+                    # Personality hints (only if assessed)
+                    "personality_hints": c.personality_hints if c.personality_hints else [],
                 }
                 for c in self._market.customers
                 if c.stage not in ("closed_won", "closed_lost", "churned")

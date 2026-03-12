@@ -266,7 +266,8 @@ export function RewardPanel() {
               <Tooltip
                 contentStyle={{ background: 'var(--color-tooltip-bg)', border: '1px solid var(--color-tooltip-border)', fontSize: 10, color: 'var(--color-text-primary)', borderRadius: 6 }}
                 formatter={(v: number, _: string, props: any) => {
-                  const name = agents[props.payload?.id]?.name || props.payload?.id
+                  const id = props.payload?.id as string
+                  const name = id && id in agents ? agents[id as AgentId]?.name : id
                   return [v.toFixed(2), name]
                 }}
                 cursor={{ fill: 'var(--color-border)' }}

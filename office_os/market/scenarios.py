@@ -156,6 +156,39 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
+@dataclass
+class MinedScenario:
+    """A scenario extracted from simulation data at a critical decision point.
+
+    Inspired by EnterpriseSim #73's "Simulate → Mine → Train" pattern.
+    Starts agents at a critical moment rather than day 1.
+    """
+    name: str
+    description: str
+    source_scenario: str  # Original scenario this was mined from
+    trigger_role: str     # Which role's critical moment
+    trigger_type: str     # "spike" or "crash"
+    start_day: int        # Day to start the mini-scenario
+    start_turn: int       # Turn to start from
+    window_data: list[dict] = field(default_factory=list)  # Extracted (state, action) window
+    target_reward: float = 0.0  # The reward at the critical moment (target to beat or avoid)
+
+    def to_scenario(self) -> Scenario:
+        """Convert to a standard Scenario for replay."""
+        return Scenario(
+            name=f"mined_{self.name}",
+            description=f"[Mined from {self.source_scenario}] {self.description}",
+            scheduled_events=[
+                ScheduledEvent(
+                    day=1,
+                    name=f"Context: {self.trigger_type} moment for {self.trigger_role}",
+                    description=self.description,
+                    handler="_scenario_board_pressure",  # Generic handler
+                ),
+            ],
+        )
+
+
 def get_scenario(name: str) -> Scenario:
     """Get a scenario by name. Defaults to 'baseline'."""
     return SCENARIOS.get(name, SCENARIOS["baseline"])

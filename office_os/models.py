@@ -42,6 +42,52 @@ class OfficeOsAction(Action):
     )
 
 
+class RewardBreakdown:
+    """Decomposed reward signals for multi-signal training (inspired by OpsGate #4).
+
+    Instead of a single composite reward, each turn produces explicit sub-signals
+    that the training pipeline can use separately or combined.
+    """
+
+    def __init__(
+        self,
+        format_reward: float = 0.0,
+        role_compliance: float = 0.0,
+        execution_reward: float = 0.0,
+        impact_reward: float = 0.0,
+        collaboration_reward: float = 0.0,
+        efficiency_penalty: float = 0.0,
+    ):
+        self.format_reward = format_reward
+        self.role_compliance = role_compliance
+        self.execution_reward = execution_reward
+        self.impact_reward = impact_reward
+        self.collaboration_reward = collaboration_reward
+        self.efficiency_penalty = efficiency_penalty
+
+    @property
+    def total(self) -> float:
+        return (
+            self.format_reward
+            + self.role_compliance
+            + self.execution_reward
+            + self.impact_reward
+            + self.collaboration_reward
+            + self.efficiency_penalty
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "format_reward": round(self.format_reward, 3),
+            "role_compliance": round(self.role_compliance, 3),
+            "execution_reward": round(self.execution_reward, 3),
+            "impact_reward": round(self.impact_reward, 3),
+            "collaboration_reward": round(self.collaboration_reward, 3),
+            "efficiency_penalty": round(self.efficiency_penalty, 3),
+            "total": round(self.total, 3),
+        }
+
+
 class OfficeOsObservation(Observation):
     """What an agent sees after a step. Asymmetric per role."""
 

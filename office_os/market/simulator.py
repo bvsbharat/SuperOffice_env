@@ -9,6 +9,7 @@ from .state import (
     Campaign,
     ContentPiece,
     Customer,
+    CustomerPersonality,
     Feature,
     MarketState,
     Message,
@@ -21,6 +22,9 @@ class MarketSimulator:
     def __init__(self, state: MarketState):
         self.state = state
         self.cfg = Config()
+        # Adversarial curriculum designer (tracks performance, generates targeted events)
+        from .events import AdversarialEventDesigner
+        self.adversarial_designer = AdversarialEventDesigner()
 
     def execute_action(self, agent_id: str, action_type: str, target: str, parameters: dict, message: str | None) -> dict:
         """Execute an agent's action and return a result summary."""
@@ -278,7 +282,7 @@ class MarketSimulator:
     def _handle_sales(self, action_type: str, target: str, parameters: dict, result: dict) -> dict:
         customer = self._find_customer(target)
 
-        if action_type in ("QUALIFY_LEAD", "RUN_DEMO", "SEND_PROPOSAL", "CLOSE_DEAL", "FOLLOW_UP") and not customer:
+        if action_type in ("QUALIFY_LEAD", "RUN_DEMO", "SEND_PROPOSAL", "CLOSE_DEAL", "FOLLOW_UP", "ASSESS_CUSTOMER") and not customer:
             # Try to find closest match and suggest it
             active = [c for c in self.state.customers if c.stage not in ("closed_won", "closed_lost", "churned")]
             hint = f" Active customers: {[c.name for c in active]}" if active else ""
@@ -297,6 +301,8 @@ class MarketSimulator:
         elif action_type == "FOLLOW_UP":
             customer.last_contacted_day = self.state.day
             result["detail"] = f"Followed up with {customer.name}"
+        elif action_type == "ASSESS_CUSTOMER":
+            return self._sales_assess_customer(customer, result)
         elif action_type == "COLLECT_FEEDBACK":
             fb = {"customer": target, "content": parameters.get("feedback", "general feedback"), "day": self.state.day}
             self.state.feedback.append(fb)
@@ -348,6 +354,23 @@ class MarketSimulator:
         result["detail"] = f"Sent proposal to {customer.name} for ${customer.budget:,.0f}/yr"
         return result
 
+    def _sales_assess_customer(self, customer: Customer, result: dict) -> dict:
+        """Run a Bayesian belief update on a customer's personality (inspired by #19, #38)."""
+        # Ensure personality exists
+        if not customer.personality:
+            customer.personality = CustomerPersonality.random(self.state._rng)
+        # Reveal a partial hint
+        hint = customer.personality.partial_reveal(self.state._rng)
+        customer.personality_hints.append(hint)
+        dominant = customer.personality.dominant_type
+        # Give a summary without directly revealing the type
+        result["detail"] = (
+            f"Assessment of {customer.name}: {hint}. "
+            f"Hints collected: {len(customer.personality_hints)}. "
+            f"Consider tailoring your pitch based on these signals."
+        )
+        return result
+
     def _sales_close(self, customer: Customer, parameters: dict, result: dict) -> dict:
         if customer.stage not in ("proposal", "negotiation"):
             result["success"] = False
@@ -365,27 +388,31 @@ class MarketSimulator:
         base_prob = 0.5 - (tier["months"] - 1) * 0.015
         shipped = self.state.shipped_features()
         if shipped:
-            # More shipped features = higher close probability (up to +0.3)
             base_prob += min(0.3, len(shipped) * 0.1)
         if customer.content_touchpoints:
             base_prob += 0.1 * min(len(customer.content_touchpoints), 3)
-        # Customer satisfaction affects willingness to buy
         if self.state.customer_satisfaction < 0.4:
             base_prob -= 0.1
         elif self.state.customer_satisfaction > 0.7:
             base_prob += 0.1
-        # Unresolved objections reduce close probability
         if customer.objections:
             base_prob -= 0.05 * len(customer.objections)
-        # Low stability makes enterprise customers cautious (reduced penalty)
         if self.state.product_stability < 0.6 and customer.company_size == "enterprise":
             base_prob -= 0.1
-        # Negotiation attempts make closing harder but not impossible
         if customer.negotiation_attempts > 0:
             base_prob -= 0.1 * customer.negotiation_attempts
-        # Startups close faster
         if customer.company_size == "startup":
             base_prob += 0.1
+
+        # Personality matching bonus (Bayesian opponent modeling)
+        pitch_style = parameters.get("pitch_style", "")
+        if customer.personality and pitch_style:
+            match = customer.personality.match_score(pitch_style)
+            base_prob += (match - 0.25) * 0.4  # Up to +0.1 or -0.1 based on match
+        elif customer.personality and customer.personality_hints:
+            # Small bonus just for having assessed the customer
+            base_prob += 0.05
+
         base_prob = max(0.1, min(0.9, base_prob))  # Clamp to [10%, 90%]
 
         if self.state._rng.random() < base_prob:
