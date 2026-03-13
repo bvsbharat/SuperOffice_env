@@ -1,8 +1,12 @@
 """System prompts for each Office OS agent role.
 
-Inspired by gstack's cognitive mode switching pattern: each role gets a rigorous
-behavioral program with anti-pattern suppressions, phase-aware guidance,
-structured decision frameworks, and explicit collaboration protocols.
+Inspired by gstack (https://github.com/garrytan/gstack) by Garry Tan.
+gstack's Claude Code skills demonstrate cognitive mode switching, anti-pattern
+suppressions, structured decision frameworks, and rigorous behavioral programs.
+We adapted these patterns for multi-agent RL: each role gets phase-aware guidance,
+priority decision trees, DO NOT lists, and explicit collaboration protocols.
+
+Credit: Garry Tan (@garrytan) — https://github.com/garrytan/gstack
 """
 
 SHARED_CONTEXT = """You are an AI agent in Office OS, a multi-agent startup simulation.
