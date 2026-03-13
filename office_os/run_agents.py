@@ -126,17 +126,16 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
                 role, obs.reward, action_dict.get("action_type", "")
             )
 
-        # Record skill if high reward
-        if obs.reward > 5.0:
-            agent.base.record_skill(
-                observation=str(obs_dict.get("role_data", "")),
-                action_type=action_dict.get("action_type", ""),
-                target=action_dict.get("target", ""),
-                parameters=action_dict.get("parameters", {}),
-                reasoning=action_dict.get("reasoning", ""),
-                reward=obs.reward,
-                turn=turn,
-            )
+        # Record skill (high reward) or anti-pattern (very negative reward)
+        agent.base.record_skill(
+            observation=str(obs_dict.get("role_data", "")),
+            action_type=action_dict.get("action_type", ""),
+            target=action_dict.get("target", ""),
+            parameters=action_dict.get("parameters", {}),
+            reasoning=action_dict.get("reasoning", ""),
+            reward=obs.reward,
+            turn=turn,
+        )
 
         # Collect trajectory with decomposed rewards
         reward_breakdown = {}
@@ -153,10 +152,11 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
             reward_breakdown=reward_breakdown,
         )
 
-        # Periodic reflection (every N turns per agent)
-        if turn % (reflect_every * len(AGENT_ROLES)) == 0:
+        # Event-driven reflection: trigger on high/low reward, day boundaries, or periodic
+        day_boundary = (turn % TURNS_PER_DAY == 0)
+        if day_boundary or turn % (reflect_every * len(AGENT_ROLES)) == 0:
             for r, a in agents.items():
-                a.reflect(turn, obs_dict)
+                a.reflect(turn, obs_dict, reward=obs.reward, day_boundary=day_boundary)
                 logger.info(f"  [{r}] reflected on recent events")
 
         # Day summary

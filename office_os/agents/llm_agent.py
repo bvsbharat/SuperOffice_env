@@ -1,5 +1,12 @@
 """LLM-powered agent using vLLM-served models or Claude for structured decisions.
 
+Enhanced with gstack-inspired patterns:
+- Strategic mode injection (GROWTH/SURVIVAL/SPRINT)
+- Phase-aware guidance
+- Situation analysis summary
+- Repetition detection warnings
+- Event-driven reflection triggers
+
 Modes:
   1. vLLM model (Qwen + LoRA on Northflank GPU) — primary, uses JSON prompting
   2. Claude (Anthropic API) — alternative mode
@@ -22,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 _OUTPUT_TOKENS = 4096  # Qwen3.5-0.8B supports 262K context; generous output budget
 _MAX_CONTEXT_TOKENS = 262144  # 262K — full native context of Qwen3.5-0.8B
+
+
+def _count_tokens(text: str) -> int:
+    """Estimate token count from text length. ~4 chars per token for English."""
+    return len(text) // 4
 
 
 # ── Tool definitions for agent tool-calling ───────────────────────────
@@ -112,11 +124,68 @@ def _get_openai_client(base_url: str, api_key: str):
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
+# ── Phase guidance for each phase ─────────────────────────────────────
+
+_PHASE_GUIDANCE = {
+    "morning_standup": "PHASE: Morning standup. Read shared memory and messages. Assess what happened. Respond to teammate requests. Plan your day.",
+    "execution": "PHASE: Execution. Take your highest-impact action NOW. This is where real work happens.",
+    "review": "PHASE: Review. Reflect on what worked today. Flag blockers. Share status updates with teammates.",
+    "planning": "PHASE: Planning. Set priorities for tomorrow. Coordinate with teammates on what's needed next.",
+}
+
+
+# ── Situation analysis helper ─────────────────────────────────────────
+
+def _build_situation_analysis(kpis: dict, budget: float, mode: str, phase: str) -> str:
+    """Build a concise situation analysis string for the agent."""
+    lines = [f"## SITUATION ANALYSIS (Mode: {mode})"]
+
+    # Key health indicators
+    satisfaction = kpis.get("customer_satisfaction", 0)
+    stability = kpis.get("product_stability", 0)
+    revenue = kpis.get("revenue", 0)
+    traffic = kpis.get("website_traffic", 0)
+
+    alerts = []
+    if budget < 3000:
+        alerts.append("CRITICAL: Budget dangerously low")
+    elif budget < 5000:
+        alerts.append("Budget is low — conserve spending")
+    if satisfaction < 0.3:
+        alerts.append("CRITICAL: Customer satisfaction very low — churn imminent")
+    elif satisfaction < 0.5:
+        alerts.append("Customer satisfaction declining — prioritize quality")
+    if stability < 0.5:
+        alerts.append("CRITICAL: Product stability poor — fix bugs urgently")
+    elif stability < 0.7:
+        alerts.append("Product stability needs attention")
+    if traffic < 500:
+        alerts.append("Traffic is low — need marketing/content push")
+
+    if alerts:
+        lines.append("ALERTS:")
+        for a in alerts:
+            lines.append(f"  !! {a}")
+    else:
+        lines.append("Health: Good. All indicators stable.")
+
+    # Phase guidance
+    guidance = _PHASE_GUIDANCE.get(phase, "")
+    if guidance:
+        lines.append(guidance)
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 # ── LLM Agent ────────────────────────────────────────────────────────
 
 class LLMAgent:
     """
     Agent that uses vLLM-served models or Claude for decisions.
+
+    Enhanced with strategic mode awareness, phase-aware guidance,
+    situation analysis, and event-driven reflection triggers.
 
     Two separate modes (set at init, no automatic switching):
       - vLLM (Northflank GPU): set via set_vllm_endpoint()
@@ -188,7 +257,16 @@ class LLMAgent:
         return self._openai_client
 
     def decide(self, observation: dict, turn: int) -> dict:
-        """Decide on an action given an observation. Returns a validated action dict."""
+        """Decide on an action given an observation. Returns a validated action dict.
+
+        Enhanced: updates strategic mode, injects situation analysis, tracks actions.
+        """
+        # Update strategic mode from current observation
+        kpis = observation.get("kpis", {})
+        budget = observation.get("budget_remaining", 100000)
+        pipeline = observation.get("role_data", {}).get("pipeline", [])
+        self.base.update_strategic_mode(kpis, budget, pipeline)
+
         summary = self._summarize_observation(observation)
         self.base.observe(turn, summary, importance=5.0)
 
@@ -227,6 +305,9 @@ class LLMAgent:
                 target="auto",
                 reasoning="Fallback action after failed attempts",
             )
+
+        # Track action for repetition detection
+        self.base.track_action(action.action_type)
 
         result = action.model_dump()
         self.base.plan(turn, f"{result['action_type']} -> {result['target']}: {result.get('reasoning', '')}")
@@ -320,14 +401,14 @@ class LLMAgent:
         one at a time until it fits.
 
         Priority (high to low):
-          P0: header + KPIs + budget + role-specific context (pipeline/features)
-          P1: shared team memory (last 3 entries)
-          P2: team messages (last 3)
+          P0: header + KPIs + budget + situation analysis + role-specific context
+          P1: shared team memory (last 8 entries)
+          P2: team messages (last 8)
           P3: active events
-          P4: recent team actions (last 3)
+          P4: recent team actions (last 10)
           P5: role data (compact JSON)
-          P6: current plan
-          P7: reflections
+          P6: skill library hints
+          P7: current plan + reflections
           P8: call to action
         """
         current_tokens = _count_tokens(user_msg)
@@ -347,6 +428,7 @@ class LLMAgent:
         # Priority map by section header keyword
         priority_map = {
             "Your KPIs": 0,
+            "SITUATION ANALYSIS": 0,
             "PIPELINE STATUS": 0,
             "URGENT": 0,
             "Currently building": 0,
@@ -357,7 +439,8 @@ class LLMAgent:
             "Active Events": 3,
             "Recent team actions": 4,
             "Your role data": 5,
-            "Your current plan": 6,
+            "Relevant skills": 6,
+            "Your current plan": 7,
             "Your recent reflections": 7,
             "ALLOWED ACTIONS": 8,
         }
@@ -508,14 +591,32 @@ class LLMAgent:
 
         raise ValueError(f"Could not parse action from text: {text[:200]}")
 
-    def reflect(self, turn: int, observation: dict):
-        """Trigger a reflection cycle."""
-        context = self.base.get_context(turn)
+    def reflect(self, turn: int, observation: dict, reward: float = 0.0, day_boundary: bool = False):
+        """Trigger a reflection cycle.
+
+        Enhanced: uses event-driven triggers (high reward, failure, day boundary).
+        """
+        # Check if reflection should be triggered
+        if not self.base.should_reflect(reward, day_boundary):
+            # Still allow manual reflection if enough memories exist
+            context = self.base.get_context(turn)
+            if len(context["relevant_memories"]) < 3:
+                return
+        else:
+            context = self.base.get_context(turn)
+
         memories = context["relevant_memories"]
-        if len(memories) < 3:
+        if not memories:
             return
 
         memory_text = "\n".join(f"- {m['description']}" for m in memories[:10])
+
+        # Add reward context for richer reflections
+        reward_context = ""
+        if reward > 3.0:
+            reward_context = f"\nLast action was highly successful (reward: {reward:.1f}). What made it work?"
+        elif reward < -1.0:
+            reward_context = f"\nLast action had poor results (reward: {reward:.1f}). What went wrong and what should change?"
 
         if self.use_vllm and self._vllm_endpoint:
             try:
@@ -523,8 +624,8 @@ class LLMAgent:
                     model=self._vllm_endpoint["model_name"],
                     max_tokens=256,
                     messages=[
-                        {"role": "system", "content": "You are a startup agent reflecting on recent events."},
-                        {"role": "user", "content": f"Recent events:\n{memory_text}\n\nProvide 1-3 concise insights as a JSON object with an 'insights' array of strings."},
+                        {"role": "system", "content": f"You are a startup {self.role} agent reflecting on recent events. Current strategic mode: {self.base.strategic_mode}."},
+                        {"role": "user", "content": f"Recent events:\n{memory_text}{reward_context}\n\nProvide 1-3 concise, actionable insights as a JSON object with an 'insights' array of strings."},
                     ],
                 )
                 text = response.choices[0].message.content or ""
@@ -543,8 +644,8 @@ class LLMAgent:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=256,
-                system="You are a startup agent reflecting on recent events.",
-                messages=[{"role": "user", "content": f"Recent events:\n{memory_text}\n\nProvide 1-3 concise insights."}],
+                system=f"You are a startup {self.role} agent reflecting on recent events. Current strategic mode: {self.base.strategic_mode}.",
+                messages=[{"role": "user", "content": f"Recent events:\n{memory_text}{reward_context}\n\nProvide 1-3 concise, actionable insights."}],
                 tools=[{
                     "name": "submit_reflections",
                     "description": "Submit your reflections as a list of insight strings",
@@ -571,20 +672,43 @@ class LLMAgent:
             logger.debug(f"Reflection failed for {self.role}: {e}")
 
     def _build_user_message(self, obs: dict, turn: int) -> str:
-        """Build the context message sent to the LLM."""
+        """Build the context message sent to the LLM.
+
+        Enhanced with:
+        - Strategic mode + situation analysis (P0)
+        - Phase-aware guidance
+        - Repetition warnings
+        - Skill library hints
+        """
         context = self.base.get_context(turn)
         role_data = obs.get("role_data", {})
+        kpis = obs.get("kpis", {})
+        budget = obs.get("budget_remaining", 0)
+        phase = obs.get("phase", "execution")
 
-        # ── P0: Header + KPIs (never dropped) ────────────────────────
+        # ── P0: Header + Strategic Mode + KPIs (never dropped) ────────
         parts = [
-            f"=== Day {obs.get('day', '?')} | Phase: {obs.get('phase', '?')} | Turn {turn} ===",
-            "",
-            "## Your KPIs",
-            json.dumps(obs.get("kpis", {}), indent=2),
-            "",
-            f"Budget remaining: ${obs.get('budget_remaining', 0):,.0f}",
+            f"=== Day {obs.get('day', '?')} | Phase: {phase} | Turn {turn} ===",
             "",
         ]
+
+        # Situation analysis with strategic mode and alerts
+        situation = _build_situation_analysis(kpis, budget, self.base.strategic_mode, phase)
+        parts.append(situation)
+
+        parts.extend([
+            "## Your KPIs",
+            json.dumps(kpis, indent=2),
+            "",
+            f"Budget remaining: ${budget:,.0f}",
+            "",
+        ])
+
+        # ── P0: Repetition warning (never dropped) ───────────────────
+        rep_warning = context.get("repetition_warning", "")
+        if rep_warning:
+            parts.append(f"!! {rep_warning}")
+            parts.append("")
 
         # ── P0: Role-specific critical context (never dropped) ────────
         if self.role == "dev":
@@ -622,12 +746,16 @@ class LLMAgent:
                     "proposal": "CLOSE_DEAL",
                     "negotiation": "CLOSE_DEAL",
                 }
-                parts.append(">> PIPELINE — use the EXACT customer name as target:")
-                for c in pipeline[:8]:
+                # Sort by closeness to closing (proposal > negotiation > demo > qualified > lead)
+                stage_order = {"proposal": 0, "negotiation": 1, "demo": 2, "qualified": 3, "lead": 4}
+                sorted_pipeline = sorted(pipeline[:8], key=lambda c: stage_order.get(c.get("stage", ""), 5))
+                parts.append(">> PIPELINE — sorted by closest to closing (work top-down):")
+                for c in sorted_pipeline:
                     stage = c['stage']
                     next_action = stage_to_action.get(stage, "FOLLOW_UP")
-                    stale_warn = " ⚠️STALE" if c.get('days_since_contact', 0) > 3 else ""
-                    parts.append(f'   "{c["name"]}" stage={stage} → use {next_action} target="{c["name"]}"{stale_warn}')
+                    stale_warn = " !! STALE — FOLLOW_UP urgently" if c.get('days_since_contact', 0) > 3 else ""
+                    size_hint = f" [{c.get('company_size', '')}]" if c.get('company_size') else ""
+                    parts.append(f'   "{c["name"]}"{size_hint} stage={stage} -> use {next_action} target="{c["name"]}"{stale_warn}')
                 parts.append("")
             else:
                 parts.append(">> Pipeline is empty. Use COLLECT_FEEDBACK or UPDATE_SHEET while waiting for leads.")
@@ -640,6 +768,22 @@ class LLMAgent:
             else:
                 parts.append(">> NO SHIPPED FEATURES YET — do NOT use WRITE_CASE_STUDY. Use WRITE_BLOG or WRITE_SOCIAL_POST instead.")
             parts.append("")
+        elif self.role == "ceo":
+            # CEO gets a high-level team status summary
+            team_status = role_data.get("team_status", {})
+            if team_status:
+                parts.append(">> TEAM STATUS SUMMARY:")
+                dev_status = team_status.get("dev", {})
+                if dev_status.get("building"):
+                    parts.append(f"   Dev: Building {dev_status['building']}")
+                if dev_status.get("shipped"):
+                    parts.append(f"   Dev: Shipped {', '.join(dev_status['shipped'])}")
+                sales_status = team_status.get("sales", {})
+                if sales_status.get("pipeline_count"):
+                    parts.append(f"   Sales: {sales_status['pipeline_count']} in pipeline")
+                if sales_status.get("deals_closed"):
+                    parts.append(f"   Sales: {sales_status['deals_closed']} deals closed")
+                parts.append("")
 
         # ── P1: Shared team memory (last 8) ───────────────────────────
         shared_mem = role_data.pop("shared_memory", [])
@@ -652,9 +796,12 @@ class LLMAgent:
         # ── P2: Team messages (last 8) ────────────────────────────────
         messages = obs.get("messages", [])
         if messages:
+            # Highlight messages addressed to this agent
             parts.append("## Team channel (recent messages)")
             for m in messages[-8:]:
-                parts.append(f"  {m.get('from', '?')} -> {m.get('to', 'all')}: {m.get('content', '')}")
+                to = m.get('to', 'all')
+                prefix = ">>> " if to == self.role else "  "
+                parts.append(f"{prefix}{m.get('from', '?')} -> {to}: {m.get('content', '')}")
             parts.append("")
 
         # ── P3: Active events ─────────────────────────────────────────
@@ -690,11 +837,19 @@ class LLMAgent:
             parts.append(role_str)
             parts.append("")
 
-        # ── P6: Current plan ──────────────────────────────────────────
+        # ── P6: Skill library hints ───────────────────────────────────
+        skill_lib = context.get("skill_library", {})
+        relevant_skills = skill_lib.get("relevant_skills", [])
+        if relevant_skills:
+            parts.append("## Relevant skills from past successes")
+            for skill in relevant_skills[:3]:
+                parts.append(f"  - {skill['action_type']} -> {skill['target']} (reward: {skill['reward']:.1f}): {skill['reasoning']}")
+            parts.append("")
+
+        # ── P7: Current plan + reflections ─────────────────────────────
         if context.get("current_plan"):
             parts.append(f"## Your current plan: {context['current_plan']}")
 
-        # ── P7: Reflections ───────────────────────────────────────────
         reflections = context.get("recent_reflections", [])
         if reflections:
             parts.append("## Your recent reflections")
@@ -703,7 +858,7 @@ class LLMAgent:
             parts.append("")
 
         # ── P8: Call to action ────────────────────────────────────────
-        parts.append("Pick the HIGHEST IMPACT action. Respond with JSON only.")
+        parts.append(f"Given mode={self.base.strategic_mode} and phase={phase}, pick the HIGHEST IMPACT action. Respond with JSON only.")
 
         full_msg = "\n".join(parts)
         # Prune to context budget if needed (Qwen3.5-0.8B supports full 262K)

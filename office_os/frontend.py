@@ -451,10 +451,11 @@ def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen3.5-0.8B
                     activity_file.write(f"{'='*40}\n\n")
                     activity_file.flush()
 
-                # Periodic reflection
-                if turn % (10 * len(AGENT_ROLES)) == 0:
+                # Event-driven reflection
+                day_boundary = (turn % TURNS_PER_DAY == 0)
+                if turn % (10 * len(AGENT_ROLES)) == 0 or day_boundary:
                     for r, a in agents.items():
-                        a.reflect(turn, obs_dict)
+                        a.reflect(turn, obs_dict, reward=obs.reward if hasattr(obs, 'reward') else 0.0, day_boundary=day_boundary)
 
                 # Update display
                 live.update(build_layout(env._market, turn, action_log, message_log, reward_totals))

@@ -174,10 +174,11 @@ def run_episode(
                             )
                     logger.info(f"  >> Trained {len(trained)} roles mid-episode")
 
-        # Periodic reflection
-        if turn % (10 * len(AGENT_ROLES)) == 0:
+        # Event-driven reflection
+        day_boundary = (turn % TURNS_PER_DAY == 0)
+        if turn % (10 * len(AGENT_ROLES)) == 0 or day_boundary:
             for r, a in agents.items():
-                a.reflect(turn, obs_dict)
+                a.reflect(turn, obs_dict, reward=obs.reward, day_boundary=day_boundary)
 
     # Episode summary
     kpis = env._market.get_all_kpis()
