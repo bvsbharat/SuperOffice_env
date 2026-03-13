@@ -7,6 +7,13 @@ taking turns in a simulated startup environment. Each agent uses Claude to
 decide actions based on their observations.
 
 Usage:
+    # Run locally with Ollama (Mac / local GPU — no API key needed):
+    ollama pull qwen3.5:0.8b
+    python run_agents.py --local --ollama
+
+    # Run locally with a specific Ollama model:
+    python run_agents.py --local --ollama qwen3.5:0.8b
+
     # Run locally with Anthropic API:
     export ANTHROPIC_API_KEY=your-key
     python run_agents.py --local
@@ -24,7 +31,7 @@ Usage:
     python run_agents.py --local --mine-scenarios
 
 Environment variables:
-    ANTHROPIC_API_KEY: Required for direct Anthropic API
+    ANTHROPIC_API_KEY: Required for direct Anthropic API (not needed with --ollama)
     AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY: Required for Bedrock
     AWS_REGION: Optional Bedrock region (or use --aws-region)
 """
@@ -62,8 +69,15 @@ logger = logging.getLogger(__name__)
 
 def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
               reflect_every: int = 10, provider: str = "anthropic", aws_region: str = "us-east-1",
-              mine_scenarios: bool = False, seed: int | None = None):
-    """Run the simulation locally without a server."""
+              mine_scenarios: bool = False, seed: int | None = None,
+              ollama_model: str | None = None, ollama_host: str = "http://localhost:11434"):
+    """Run the simulation locally without a server.
+
+    Args:
+        ollama_model: If set, use Ollama for local inference (e.g. "qwen3.5:0.8b").
+                      Requires Ollama running at ollama_host.
+        ollama_host: Ollama server URL (default: http://localhost:11434).
+    """
     from server.office_os_environment import OfficeOsEnvironment
     from models import OfficeOsAction
     from training.collector import TrajectoryCollector, ScenarioMiner
@@ -74,6 +88,12 @@ def run_local(days: int = EPISODE_DAYS, model: str = "claude-sonnet-4-20250514",
 
     # Create LLM agents
     agents = {role: LLMAgent(role=role, model=model, provider=provider, aws_region=aws_region) for role in AGENT_ROLES}
+
+    # Configure Ollama for local inference if requested
+    if ollama_model:
+        for role, agent in agents.items():
+            agent.set_ollama_endpoint(model_name=ollama_model, host=ollama_host)
+        logger.info(f"All agents using Ollama: {ollama_model} at {ollama_host}")
 
     # Convert initial observation to dict for agents
     obs_dict = _obs_to_dict(obs)
@@ -287,6 +307,11 @@ def main():
     # New flags for improvements
     parser.add_argument("--mine-scenarios", action="store_true", help="Mine critical decision points as training scenarios")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
+    # Mac-local inference with Ollama
+    parser.add_argument("--ollama", type=str, nargs="?", const="qwen3.5:0.8b", default=None,
+                        metavar="MODEL", help="Use Ollama for local inference (default model: qwen3.5:0.8b). Requires Ollama running locally.")
+    parser.add_argument("--ollama-host", type=str, default="http://localhost:11434",
+                        help="Ollama server URL (default: http://localhost:11434)")
     args = parser.parse_args()
 
     if not args.server and not args.local:
@@ -299,10 +324,14 @@ def main():
         provider = "bedrock"
         logger.info("Auto-detected CLAUDE_CODE_USE_BEDROCK, using Bedrock provider")
 
-    if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+    # Skip API key checks when using Ollama (local inference)
+    if args.ollama:
+        logger.info(f"Using Ollama for local inference: {args.ollama}")
+    elif provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         logger.error("ANTHROPIC_API_KEY environment variable not set")
         logger.error("Set it with: export ANTHROPIC_API_KEY=your-key-here")
         logger.error("Or use --bedrock for AWS Bedrock (uses AWS credentials)")
+        logger.error("Or use --ollama for local inference with Ollama")
         sys.exit(1)
 
     if provider == "bedrock":
@@ -320,7 +349,8 @@ def main():
     if args.local:
         run_local(days=args.days, model=args.model, reflect_every=args.reflect_every,
                   provider=provider, aws_region=args.aws_region,
-                  mine_scenarios=args.mine_scenarios, seed=args.seed)
+                  mine_scenarios=args.mine_scenarios, seed=args.seed,
+                  ollama_model=args.ollama, ollama_host=args.ollama_host)
     else:
         run_server(server_url=args.server, days=args.days, model=args.model,
                    provider=provider, aws_region=args.aws_region)

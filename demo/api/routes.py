@@ -58,6 +58,8 @@ def _get_bridge() -> OfficeOsBridge:
             mode=bridge_config.get("mode", "llm"),
             northflank_endpoint=bridge_config.get("northflank_endpoint", ""),
             train_every=bridge_config.get("train_every", 999),
+            ollama_model=bridge_config.get("ollama_model", "qwen3.5:0.8b"),
+            ollama_host=bridge_config.get("ollama_host", "http://localhost:11434"),
         )
         _active_config = {
             "model": bridge_config["model"],
@@ -125,6 +127,8 @@ class ReconfigureRequest(BaseModel):
     model: str
     provider: str = "bedrock"
     mode: Optional[str] = None
+    ollama_model: Optional[str] = None
+    ollama_host: Optional[str] = None
 
 
 # Northflank endpoint for trained model inference
@@ -152,6 +156,10 @@ async def reconfigure(req: ReconfigureRequest):
             bc["art_api_key"] = ""
         if req.mode == "inference":
             bc["northflank_endpoint"] = _NORTHFLANK_ENDPOINT
+        # Ollama config passthrough
+        if req.provider == "ollama":
+            bc["ollama_model"] = req.ollama_model or bc.get("ollama_model", "qwen3.5:0.8b")
+            bc["ollama_host"] = req.ollama_host or bc.get("ollama_host", "http://localhost:11434")
     # Track new config immediately so /api/config reflects it without needing a reset
     new_mode = req.mode or _active_config.get("mode", "llm")
     _active_config = {"model": req.model, "provider": req.provider, "mode": new_mode}

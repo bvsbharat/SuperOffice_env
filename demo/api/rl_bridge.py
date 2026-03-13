@@ -145,6 +145,8 @@ class OfficeOsBridge:
         mode: str = "llm",
         northflank_endpoint: str = "",
         train_every: int = 999,
+        ollama_model: str = "qwen3.5:0.8b",
+        ollama_host: str = "http://localhost:11434",
     ):
         self.provider = provider
         self.model = model
@@ -156,6 +158,8 @@ class OfficeOsBridge:
         self._mode = mode
         self._northflank_endpoint = northflank_endpoint
         self._train_every = train_every
+        self.ollama_model = ollama_model
+        self.ollama_host = ollama_host
         self._collector = None   # Optional TrajectoryCollector
         self._trainer = None     # Optional RemoteTrainer
 
@@ -191,6 +195,15 @@ class OfficeOsBridge:
             )
             for role in AGENT_ROLES
         }
+
+        # If Ollama provider, set Ollama endpoint on each agent
+        if self.provider == "ollama":
+            for role, agent in self._agents.items():
+                agent.set_ollama_endpoint(
+                    model_name=self.ollama_model,
+                    host=self.ollama_host,
+                )
+            logger.info(f"Ollama mode: all agents using {self.ollama_model} at {self.ollama_host}")
 
         # If ART provider, set the vLLM endpoint on each agent
         if self.provider == "art" and self.art_endpoint:

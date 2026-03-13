@@ -2,7 +2,14 @@
 SuperOffice GTM Demo -- FastAPI server with real office_os RL environment.
 
 Usage:
-    # Bedrock (default):
+    # Ollama (Mac / local — no API key needed):
+    ollama pull qwen3.5:0.8b
+    python server.py --provider ollama --days 10
+
+    # Ollama with custom model:
+    python server.py --provider ollama --ollama-model qwen3.5:0.8b --days 10
+
+    # Bedrock:
     python server.py --provider bedrock --model global.anthropic.claude-haiku-4-5-20251001-v1:0 --days 10
 
     # ART/Northflank vLLM:
@@ -74,8 +81,8 @@ async def health():
 
 def main():
     parser = argparse.ArgumentParser(description="SuperOffice GTM Demo Server")
-    parser.add_argument("--provider", choices=["bedrock", "art"], default="bedrock",
-                        help="LLM provider (default: bedrock)")
+    parser.add_argument("--provider", choices=["bedrock", "art", "ollama", "anthropic"], default="bedrock",
+                        help="LLM provider: bedrock (default), ollama (local Mac), art (vLLM), anthropic (direct)")
     parser.add_argument("--model", type=str, default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         help="Model name (default: global.anthropic.claude-haiku-4-5-20251001-v1:0)")
     parser.add_argument("--days", type=int, default=10,
@@ -94,6 +101,11 @@ def main():
                         help="Northflank vLLM endpoint for training/inference")
     parser.add_argument("--train-every", type=int, default=999,
                         help="Train every N simulation days (default: 999 = end of episode only)")
+    # Ollama options
+    parser.add_argument("--ollama-model", type=str, default="qwen3.5:0.8b",
+                        help="Ollama model name (default: qwen3.5:0.8b)")
+    parser.add_argument("--ollama-host", type=str, default="http://localhost:11434",
+                        help="Ollama server URL (default: http://localhost:11434)")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
@@ -110,11 +122,16 @@ def main():
         "mode": args.mode,
         "northflank_endpoint": args.northflank_endpoint or os.environ.get("NORTHFLANK_ENDPOINT", ""),
         "train_every": args.train_every,
+        "ollama_model": args.ollama_model,
+        "ollama_host": args.ollama_host,
     })
 
     import uvicorn
     print(f"Starting server: provider={args.provider}, model={args.model}, days={args.days}, mode={args.mode}")
-    if args.provider == "art":
+    if args.provider == "ollama":
+        print(f"  Ollama model: {args.ollama_model}")
+        print(f"  Ollama host: {args.ollama_host}")
+    elif args.provider == "art":
         print(f"  ART endpoint: {bridge_config['art_endpoint']}")
         print(f"  ART model: {bridge_config['art_model']}")
     uvicorn.run(app, host=args.host, port=args.port)

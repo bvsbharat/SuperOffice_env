@@ -235,6 +235,24 @@ class LLMAgent:
         self.use_vllm = True
         logger.info(f"{self.role}: Using vLLM at {base_url} ({model_name})")
 
+    def set_ollama_endpoint(self, model_name: str = "qwen3.5:0.8b",
+                           host: str = "http://localhost:11434"):
+        """Configure Ollama as the local inference backend.
+
+        Ollama provides an OpenAI-compatible API at /v1, so this is a thin
+        wrapper around set_vllm_endpoint. Works on Mac (Apple Silicon) and Linux.
+
+        Args:
+            model_name: Ollama model tag (e.g. "qwen3.5:0.8b")
+            host: Ollama server URL (default: http://localhost:11434)
+        """
+        self.set_vllm_endpoint(
+            base_url=f"{host.rstrip('/')}/v1",
+            api_key="ollama",  # Ollama doesn't require auth
+            model_name=model_name,
+        )
+        logger.info(f"{self.role}: Using Ollama at {host} ({model_name})")
+
     def clear_vllm_endpoint(self):
         """Revert to Claude for inference."""
         self._vllm_endpoint = None
