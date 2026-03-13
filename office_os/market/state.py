@@ -16,6 +16,90 @@ from .config import (
 )
 
 
+PERSONALITY_TYPES = ["price_sensitive", "feature_driven", "relationship_focused", "enterprise_cautious"]
+
+
+@dataclass
+class CustomerPersonality:
+    """Hidden personality traits for Bayesian opponent modeling.
+
+    Each customer has hidden weights across four dimensions. Agents must infer
+    the personality type from interaction history and match their pitch accordingly.
+    """
+    price_weight: float = 0.25
+    feature_weight: float = 0.25
+    support_weight: float = 0.25
+    brand_weight: float = 0.25
+
+    @classmethod
+    def random(cls, rng) -> "CustomerPersonality":
+        """Generate a random personality with one dominant trait."""
+        weights = [rng.uniform(0.05, 0.3) for _ in range(4)]
+        dominant = rng.randint(0, 3)
+        weights[dominant] = rng.uniform(0.4, 0.7)
+        total = sum(weights)
+        weights = [w / total for w in weights]
+        return cls(
+            price_weight=weights[0],
+            feature_weight=weights[1],
+            support_weight=weights[2],
+            brand_weight=weights[3],
+        )
+
+    @property
+    def dominant_type(self) -> str:
+        """Return the dominant personality type."""
+        weights = {
+            "price_sensitive": self.price_weight,
+            "feature_driven": self.feature_weight,
+            "relationship_focused": self.support_weight,
+            "enterprise_cautious": self.brand_weight,
+        }
+        return max(weights, key=weights.get)
+
+    def match_score(self, pitch_style: str) -> float:
+        """How well a pitch style matches this personality. Returns 0-1."""
+        style_map = {
+            "value": self.price_weight,
+            "price": self.price_weight,
+            "features": self.feature_weight,
+            "technical": self.feature_weight,
+            "relationship": self.support_weight,
+            "support": self.support_weight,
+            "brand": self.brand_weight,
+            "enterprise": self.brand_weight,
+            "security": self.brand_weight,
+        }
+        return style_map.get(pitch_style, 0.25)
+
+    def partial_reveal(self, rng) -> str:
+        """Reveal a hint about the personality (partial info for Bayesian inference)."""
+        hints = {
+            "price_sensitive": [
+                "Asked about pricing tiers and discounts",
+                "Mentioned tight budget constraints",
+                "Compared your pricing to competitors",
+            ],
+            "feature_driven": [
+                "Asked detailed technical questions",
+                "Requested feature roadmap documentation",
+                "Wants to see API documentation first",
+            ],
+            "relationship_focused": [
+                "Asked about customer support SLAs",
+                "Wants dedicated account manager",
+                "Values long-term partnership over features",
+            ],
+            "enterprise_cautious": [
+                "Requires security audit and SOC2",
+                "Needs compliance documentation",
+                "Must get approval from legal team",
+            ],
+        }
+        dominant = self.dominant_type
+        return rng.choice(hints.get(dominant, ["No specific preference revealed"]))
+
+
 @dataclass
 class Customer:
     """A customer moving through the sales pipeline."""
@@ -37,6 +121,9 @@ class Customer:
     contract_tier: str = ""  # "monthly", "6_month", "annual" -- set on close
     negotiation_attempts: int = 0  # Track close attempts from negotiation
     closed_day: int = 0  # Day the deal was closed (for MRR tracking)
+    # Bayesian opponent modeling: hidden personality
+    personality: CustomerPersonality | None = None
+    personality_hints: list[str] = field(default_factory=list)  # Revealed hints
 
     def advance_stage(self) -> bool:
         """Move customer to the next pipeline stage. Returns True if moved."""
@@ -115,7 +202,6 @@ class SharedMemory:
     """
     Shared team knowledge board — all agents read and write.
 
-    Inspired by colony-collapse's SharedKnowledge pattern.
     Agents post updates, requests, and insights here.
     All entries are visible to all agents.
     """
@@ -256,6 +342,7 @@ class MarketState:
                 stage="lead",
                 created_day=1,
                 last_contacted_day=1,
+                personality=CustomerPersonality.random(rng),
             )
             state.customers.append(customer)
         state._customer_pool_index = num_leads
@@ -273,6 +360,7 @@ class MarketState:
                 stage="lead",
                 created_day=1,
                 last_contacted_day=1,
+                personality=CustomerPersonality.random(rng),
             )
             state.customers.append(customer)
 
@@ -403,6 +491,7 @@ class MarketState:
             stage="visitor",
             created_day=self.day,
             last_contacted_day=self.day,
+            personality=CustomerPersonality.random(self._rng),
         )
         self.customers.append(customer)
         # NOTE: callers handle _stage_transitions when they advance stage.

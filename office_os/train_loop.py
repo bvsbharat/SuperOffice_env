@@ -56,10 +56,11 @@ from market.config import AGENT_ROLES, TURNS_PER_DAY
 from server.office_os_environment import OfficeOsEnvironment
 from models import OfficeOsAction
 from market.config import EPISODE_DAYS
-from training.collector import TrajectoryCollector
+from training.collector import TrajectoryCollector, ScenarioMiner
 from training.trainer import RemoteTrainer
 
-SCENARIOS = ["baseline", "competitor", "series_a", "churn", "viral"]
+# Ordered by difficulty for curriculum learning (easiest first)
+SCENARIOS_BY_DIFFICULTY = ["baseline", "competitor", "series_a", "churn", "viral"]
 
 
 def run_episode(
@@ -67,9 +68,19 @@ def run_episode(
     scenario: str,
     agents: dict[str, LLMAgent],
     collector: TrajectoryCollector,
+    trainer: RemoteTrainer | None = None,
     days: int = EPISODE_DAYS,
+    dry_run: bool = False,
+    use_claude: bool = False,
 ) -> dict:
-    """Run a single 90-day episode and collect trajectories. Returns summary."""
+    """Run a single episode and collect trajectories.
+
+    Supports mid-episode sliding-window training: if trainer is provided
+    and not in dry-run mode, it checks every day whether enough trajectories
+    have accumulated and triggers training mid-episode.
+
+    Returns summary dict.
+    """
     env = OfficeOsEnvironment(scenario=scenario)
     obs = env.reset()
 
@@ -77,6 +88,7 @@ def run_episode(
     day_rewards = {role: 0.0 for role in AGENT_ROLES}
     turn = 0
     role_index = 0
+    mid_episode_trains = 0
 
     logger.info(f"Episode {episode} starting: scenario={scenario}, days={days}")
 
@@ -108,7 +120,10 @@ def run_episode(
         )
         obs = env.step(action)
 
-        # Record trajectory
+        # Extract decomposed reward breakdown from observation metadata
+        reward_breakdown = obs.metadata.get("reward_breakdown", {}) if obs.metadata else {}
+
+        # Record trajectory with full reward breakdown
         collector.record(
             role=role,
             system_prompt=agent.system_prompt,
@@ -122,12 +137,13 @@ def run_episode(
                 "episode": episode,
                 "scenario": scenario,
             },
+            reward_breakdown=reward_breakdown,
         )
 
         reward_totals[role] += obs.reward
         day_rewards[role] += obs.reward
 
-        # Day boundary logging
+        # Day boundary: logging + sliding-window training check
         if turn % TURNS_PER_DAY == 0:
             kpis = env._market.get_all_kpis()
             day_reward_str = " ".join(f"{r[:3]}={v:+.1f}" for r, v in day_rewards.items())
@@ -140,6 +156,23 @@ def run_episode(
                 f"Rewards: {day_reward_str}"
             )
             day_rewards = {role: 0.0 for role in AGENT_ROLES}
+
+            # --- Sliding-window mid-episode training ---
+            if trainer and not dry_run and not use_claude and trainer.should_train(obs.day):
+                logger.info(f"  >> Mid-episode training triggered at day {obs.day}")
+                train_results = asyncio.run(trainer.train_all_roles(current_day=obs.day))
+                trained = [r for r in train_results if r["status"] == "trained"]
+                if trained:
+                    mid_episode_trains += 1
+                    for tr in trained:
+                        endpoint = trainer.get_inference_endpoint(tr["role"])
+                        if endpoint:
+                            agents[tr["role"]].set_vllm_endpoint(
+                                base_url=endpoint["base_url"].rstrip("/") + "/v1",
+                                api_key="dummy",
+                                model_name=endpoint["model_name"],
+                            )
+                    logger.info(f"  >> Trained {len(trained)} roles mid-episode")
 
         # Periodic reflection
         if turn % (10 * len(AGENT_ROLES)) == 0:
@@ -162,12 +195,15 @@ def run_episode(
         "reward_totals": reward_totals,
         "turns": turn,
         "pending_trajectories": collector.pending_count(),
+        "mid_episode_trains": mid_episode_trains,
     }
 
     logger.info(f"Episode {episode} complete: scenario={scenario}")
     logger.info(f"  Revenue=${kpis['total_revenue']:,.0f} | Won={won} Lost={lost}")
     logger.info(f"  Rewards: {', '.join(f'{r}={v:+.1f}' for r, v in reward_totals.items())}")
     logger.info(f"  Trajectories pending: {collector.pending_count()}")
+    if mid_episode_trains:
+        logger.info(f"  Mid-episode training rounds: {mid_episode_trains}")
 
     return summary
 
@@ -178,7 +214,7 @@ def main():
                         help="Number of 90-day episodes to run (default: 10)")
     parser.add_argument("--days", type=int, default=EPISODE_DAYS,
                         help=f"Days per episode (default: {EPISODE_DAYS})")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-0.8B",
                         help="Model name for vLLM inference")
     parser.add_argument("--northflank-endpoint", type=str, default="",
                         help="Northflank inference endpoint URL")
@@ -214,7 +250,7 @@ def main():
         logger.error("Either --use-claude or --northflank-endpoint required")
         sys.exit(1)
 
-    scenarios = args.scenarios or SCENARIOS
+    scenarios = args.scenarios or SCENARIOS_BY_DIFFICULTY
     os.makedirs(args.output_dir, exist_ok=True)
 
     mode = "Claude (distillation)" if args.use_claude else f"vLLM ({args.model})"
@@ -258,23 +294,38 @@ def main():
     trainer = RemoteTrainer(
         collector=collector,
         base_model=args.model,
-        train_every_days=999,  # Disable mid-episode training
+        train_every_days=15,  # Sliding window: train every 15 sim days
         northflank_endpoint=nf_endpoint,
         learning_rate=args.learning_rate,
     )
 
+    # ScenarioMiner for extracting critical decision points
+    miner = ScenarioMiner(spike_threshold=5.0, crash_threshold=-3.0, window_size=3)
+
+    # Curriculum learning state: start at easiest scenario, advance on success
+    CURRICULUM_REVENUE_THRESHOLD = 20000.0  # Revenue to "pass" a difficulty level
+    curriculum_level = 0  # Index into scenarios list (0 = easiest)
     all_summaries = []
 
     for ep in range(1, args.episodes + 1):
-        scenario = scenarios[(ep - 1) % len(scenarios)]
+        # --- Curriculum learning: pick scenario based on performance ---
+        if args.scenarios:
+            # User specified scenarios — cycle through them
+            scenario = scenarios[(ep - 1) % len(scenarios)]
+        else:
+            # Auto-curriculum: use current difficulty level
+            scenario = scenarios[min(curriculum_level, len(scenarios) - 1)]
 
-        # Run full 90-day episode
+        # Run full episode with mid-episode sliding-window training
         summary = run_episode(
             episode=ep,
             scenario=scenario,
             agents=agents,
             collector=collector,
+            trainer=trainer if not args.dry_run and not (args.use_claude and not nf_endpoint) else None,
             days=args.days,
+            dry_run=args.dry_run,
+            use_claude=args.use_claude,
         )
         all_summaries.append(summary)
 
@@ -282,39 +333,65 @@ def main():
         traj_path = os.path.join(args.output_dir, f"trajectories_ep{ep}_{scenario}.jsonl")
         collector.save_jsonl(traj_path)
 
-        # Train after episode (unless dry run or Claude-only collection)
+        # --- Mine critical scenarios for focused training data ---
+        mined = miner.mine(collector)
+        if mined:
+            mined_path = os.path.join(args.output_dir, f"mined_scenarios_ep{ep}.jsonl")
+            miner.save(mined_path)
+            logger.info(f"  Mined {len(mined)} critical scenarios -> {mined_path}")
+
+        # --- Curriculum advancement ---
+        if not args.scenarios:
+            ep_revenue = summary.get("total_revenue", 0)
+            if ep_revenue >= CURRICULUM_REVENUE_THRESHOLD and curriculum_level < len(scenarios) - 1:
+                curriculum_level += 1
+                logger.info(
+                    f"  CURRICULUM: Revenue ${ep_revenue:,.0f} >= ${CURRICULUM_REVENUE_THRESHOLD:,.0f} "
+                    f"-> advancing to level {curriculum_level} ({scenarios[min(curriculum_level, len(scenarios) - 1)]})"
+                )
+            elif ep_revenue < CURRICULUM_REVENUE_THRESHOLD:
+                logger.info(
+                    f"  CURRICULUM: Revenue ${ep_revenue:,.0f} < ${CURRICULUM_REVENUE_THRESHOLD:,.0f} "
+                    f"-> staying at level {curriculum_level} ({scenario})"
+                )
+
+        # Train after episode (remaining trajectories from sliding window)
         if args.use_claude and not nf_endpoint:
             # Claude distillation: collect only, no training endpoint available
             logger.info(f"[DISTILL] Episode {ep} collected {collector.pending_count()} Claude trajectories")
             collector.drain_batch()
         elif not args.dry_run:
-            logger.info(f"\n{'=' * 40}")
-            logger.info(f"TRAINING after Episode {ep} ({scenario})")
-            logger.info(f"Pending trajectories: {collector.pending_count()}")
+            pending = collector.pending_count()
+            if pending > 0:
+                logger.info(f"\n{'=' * 40}")
+                logger.info(f"END-OF-EPISODE TRAINING after Episode {ep} ({scenario})")
+                logger.info(f"Pending trajectories: {pending}")
 
-            train_results = asyncio.run(trainer.train_all_roles(current_day=ep * args.days))
+                train_results = asyncio.run(trainer.train_all_roles(current_day=ep * args.days))
 
-            for tr in train_results:
-                status = tr["status"]
-                role = tr["role"]
-                if status == "trained":
-                    logger.info(f"  {role}: trained (step={tr.get('step', '?')}, trajs={tr.get('trajectories_used', '?')})")
-                    # Switch agent to trained LoRA model (only in vLLM mode)
-                    if not args.use_claude:
-                        endpoint = trainer.get_inference_endpoint(role)
-                        if endpoint:
-                            agents[role].set_vllm_endpoint(
-                                base_url=endpoint["base_url"].rstrip("/") + "/v1",
-                                api_key="dummy",
-                                model_name=endpoint["model_name"],
-                            )
-                            logger.info(f"    >> {role} switched to LoRA: {endpoint['model_name']}")
-                elif tr.get("reason"):
-                    logger.info(f"  {role}: {status} ({tr['reason']})")
-                else:
-                    logger.info(f"  {role}: {status}")
+                for tr in train_results:
+                    status = tr["status"]
+                    role = tr["role"]
+                    if status == "trained":
+                        logger.info(f"  {role}: trained (step={tr.get('step', '?')}, trajs={tr.get('trajectories_used', '?')})")
+                        # Switch agent to trained LoRA model (only in vLLM mode)
+                        if not args.use_claude:
+                            endpoint = trainer.get_inference_endpoint(role)
+                            if endpoint:
+                                agents[role].set_vllm_endpoint(
+                                    base_url=endpoint["base_url"].rstrip("/") + "/v1",
+                                    api_key="dummy",
+                                    model_name=endpoint["model_name"],
+                                )
+                                logger.info(f"    >> {role} switched to LoRA: {endpoint['model_name']}")
+                    elif tr.get("reason"):
+                        logger.info(f"  {role}: {status} ({tr['reason']})")
+                    else:
+                        logger.info(f"  {role}: {status}")
 
-            logger.info(f"{'=' * 40}\n")
+                logger.info(f"{'=' * 40}\n")
+            else:
+                logger.info(f"  No remaining trajectories after mid-episode training")
         else:
             logger.info(f"[DRY RUN] Skipping training after Episode {ep}")
             # Still drain the batch so next episode starts fresh
@@ -336,6 +413,7 @@ def main():
             "days_per_episode": args.days,
             "model": args.model,
             "scenarios_used": [s["scenario"] for s in all_summaries],
+            "curriculum_level_reached": curriculum_level,
             "training_stats": trainer.get_training_stats(),
             "episode_summaries": all_summaries,
         }, f, indent=2, default=str)

@@ -32,7 +32,7 @@ class RemoteTrainer:
     Usage:
         trainer = RemoteTrainer(
             collector=collector,
-            base_model="Qwen/Qwen2.5-14B-Instruct",
+            base_model="Qwen/Qwen3.5-0.8B",
         )
         if trainer.should_train(current_day):
             await trainer.train_all_roles()
@@ -42,8 +42,8 @@ class RemoteTrainer:
     def __init__(
         self,
         collector: TrajectoryCollector,
-        base_model: str = "Qwen/Qwen2.5-14B-Instruct",
-        train_every_days: int = 999,  # Train after episode, not mid-episode
+        base_model: str = "Qwen/Qwen3.5-0.8B",
+        train_every_days: int = 15,  # Sliding window: train every 15 sim days
         min_trajectories: int = 10,
         northflank_endpoint: str = "",
         learning_rate: float = 2e-5,
@@ -112,6 +112,7 @@ class RemoteTrainer:
                         "user_message": t.user_message,
                         "assistant_response": t.assistant_response,
                         "reward": t.reward,
+                        "reward_breakdown": t.reward_breakdown,
                     }
                     for t in turns
                 ],

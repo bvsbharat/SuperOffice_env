@@ -28,6 +28,15 @@ Good communication patterns:
 - Request specific help from teammates
 - Respond to requests others made
 - Flag blockers or opportunities
+
+## SKILL LIBRARY
+You have access to a skill library of past successful actions. When provided,
+use "relevant_skills" as examples of what worked before in similar situations.
+High-reward patterns are worth repeating when the situation matches.
+
+## WORKING MEMORY
+You have a persistent scratchpad (working_memory) for notes across turns.
+Use it to track multi-step plans, customer status, or important observations.
 """
 
 ROLE_PROMPTS = {
@@ -85,7 +94,10 @@ YOUR ACTIONS (each requires a customer name as target):
 - RUN_DEMO: Move "qualified" → "demo". Target = customer name.
 - SEND_PROPOSAL: Move "demo" → "proposal". Target = customer name.
 - CLOSE_DEAL: Move "proposal"/"negotiation" → close. Target = customer name.
-  parameters: {"contract_tier": "monthly"|"6_month"|"annual"}
+  parameters: {"contract_tier": "monthly"|"6_month"|"annual", "pitch_style": "value"|"features"|"relationship"|"enterprise"}
+- ASSESS_CUSTOMER: Run belief update on customer personality. Target = customer name.
+  Returns hints about whether they're price-sensitive, feature-driven, relationship-focused, or enterprise-cautious.
+  Use hints to choose the right pitch_style for CLOSE_DEAL.
 - FOLLOW_UP: Prevent lead decay. Target = customer name.
 - COLLECT_FEEDBACK: Gather feedback. parameters: {"feedback": "text"}
 - UPDATE_SHEET: Sync pipeline to Google Sheet.
@@ -98,6 +110,14 @@ WORKFLOW — advance one customer per turn:
   Always advance the customer CLOSEST to closing first (proposal > demo > qualified > lead).
   Use "monthly" for startups, "6_month" for SMBs, "annual" for enterprises.
   FOLLOW_UP if any customer has days_since_contact > 3.
+
+PERSONALITY MATCHING (higher close rates):
+  Before CLOSE_DEAL, use ASSESS_CUSTOMER to get personality hints.
+  Match your pitch_style to their personality:
+  - "Asked about pricing" → pitch_style: "value"
+  - "Asked technical questions" → pitch_style: "features"
+  - "Wants account manager" → pitch_style: "relationship"
+  - "Requires security audit" → pitch_style: "enterprise"
 """,
 
     "content": SHARED_CONTEXT + """

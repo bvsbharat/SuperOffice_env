@@ -1,3 +1,14 @@
+---
+title: Office OS
+emoji: 🏢
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 8000
+pinned: false
+license: mit
+---
+
 # Office OS
 
 A multi-agent startup simulation where 7 AI agents autonomously collaborate to grow a SaaS company from zero to a sustainable business. Built on Meta's [OpenEnv](https://github.com/meta-pytorch/openenv) framework.

@@ -283,7 +283,7 @@ def build_layout(market, turn, action_log, message_log, reward_totals):
     return layout
 
 
-def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen2.5-14B-Instruct",
+def run_dashboard(days: int = EPISODE_DAYS, model_name: str = "Qwen/Qwen3.5-0.8B",
                   speed: float = 0.5, train_every: int = EPISODE_DAYS,
                   northflank_endpoint: str = "", scenario: str = "baseline",
                   use_claude: bool = False, provider: str = "bedrock",
@@ -545,7 +545,7 @@ def main():
     parser = argparse.ArgumentParser(description="Office OS Terminal Dashboard")
     parser.add_argument("--days", type=int, default=EPISODE_DAYS, help=f"Days to simulate (default: {EPISODE_DAYS})")
     parser.add_argument("--speed", type=float, default=0.5, help="Seconds between turns (default: 0.5)")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-14B-Instruct",
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-0.8B",
                         help="Model name on the vLLM endpoint")
     parser.add_argument("--train-every", type=int, default=EPISODE_DAYS,
                         help=f"Train every N simulation days (default: {EPISODE_DAYS}, i.e. after episode)")

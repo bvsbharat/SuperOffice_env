@@ -76,7 +76,7 @@ def send_train_request(role: str, trajectories: list[dict],
     url = f"{TRAIN_ENDPOINT.rstrip('/')}/train"
     payload = {
         "role": role,
-        "base_model": "Qwen/Qwen2.5-14B-Instruct",
+        "base_model": "Qwen/Qwen3.5-0.8B",
         "learning_rate": learning_rate,
         "trajectories": trajectories,
     }

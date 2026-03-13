@@ -2,7 +2,7 @@
 # Northflank container entrypoint — starts vLLM + training worker + Jupyter.
 # Set as CMD override on Northflank to make all services persistent.
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-0.8B}"
 REPO_DIR="/home/jovyan/SuperOffice_env"
 
 echo "=== Office OS Northflank Entrypoint ==="
@@ -45,9 +45,9 @@ VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_serv
     --host 0.0.0.0 \
     --enable-lora \
     --max-loras 8 \
-    --max-lora-rank 32 \
-    --gpu-memory-utilization 0.6 \
-    --max-model-len 4096 \
+    --max-lora-rank 16 \
+    --gpu-memory-utilization 0.9 \
+    --max-model-len 262144 \
     --enforce-eager \
     > /tmp/vllm.log 2>&1 &
 

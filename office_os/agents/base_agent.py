@@ -1,25 +1,24 @@
-"""Base agent with Smallville-style memory, reflection, and planning."""
+"""Base agent with Smallville-style memory, reflection, planning, skill library, and working memory."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .memory import MemoryStream
+from .memory import MemoryStream, SkillLibrary, WorkingMemory
 
 
 @dataclass
 class BaseAgent:
     """
-    A Smallville-style agent with memory streams, reflection, and planning.
-
-    Each agent role (dev, marketing, sales, content) extends this base
-    with role-specific behavior. The agent maintains a memory stream and
-    can reflect on past events to form higher-level insights.
+    A Smallville-style agent with memory streams, reflection, planning,
+    skill library, and working memory.
     """
 
     role: str  # dev, marketing, sales, content
     name: str = ""
     memory: MemoryStream = field(default_factory=MemoryStream)
+    skill_library: SkillLibrary = field(default_factory=SkillLibrary)
+    working_memory: WorkingMemory = field(default_factory=WorkingMemory)
 
     def __post_init__(self):
         if not self.name:
@@ -44,17 +43,46 @@ class BaseAgent:
         """Set the agent's current plan."""
         self.memory.add_plan(turn, plan_text)
 
-    def get_context(self, current_turn: int, k: int = 10) -> dict:
+    def record_skill(self, observation: str, action_type: str, target: str,
+                     parameters: dict, reasoning: str, reward: float, turn: int) -> bool:
+        """Record a successful action as a reusable skill."""
+        return self.skill_library.maybe_store(
+            observation=observation,
+            action_type=action_type,
+            target=target,
+            parameters=parameters,
+            reasoning=reasoning,
+            reward=reward,
+            turn=turn,
+        )
+
+    def get_context(self, current_turn: int, k: int = 10, query: str = "") -> dict:
         """Get the agent's current context for decision-making."""
-        return {
+        context = {
             "role": self.role,
             "name": self.name,
             "current_plan": self.memory.current_plan(),
             "recent_reflections": self.memory.recent_reflections(3),
-            "relevant_memories": self.memory.retrieve_relevant(current_turn, k=k),
+            "relevant_memories": self.memory.retrieve_relevant(current_turn, query=query, k=k),
             "memory_summary": self.memory.summary(),
         }
+
+        # Add skill library context
+        if self.skill_library.skills:
+            relevant_skills = self.skill_library.retrieve(query, k=3) if query else []
+            context["skill_library"] = {
+                "summary": self.skill_library.summary(),
+                "relevant_skills": relevant_skills,
+            }
+
+        # Add working memory
+        if self.working_memory.notes:
+            context["working_memory"] = self.working_memory.read_all()
+
+        return context
 
     def reset(self):
         """Reset agent state for a new episode."""
         self.memory = MemoryStream()
+        self.skill_library = SkillLibrary()
+        self.working_memory = WorkingMemory()
