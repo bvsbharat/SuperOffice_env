@@ -1,0 +1,45 @@
+# Backend API server for Office OS (Northflank deployment)
+# Serves the demo FastAPI server with React frontend on port 8000
+#
+# Build:  docker build -f Dockerfile.backend -t office-os-backend ..
+# Run:    docker run -p 8000:8000 --env-file .env office-os-backend
+
+# ── Stage 1: Build React frontend ──────────────────────────────────
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+COPY demo/frontend/package.json demo/frontend/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
+COPY demo/frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Python runtime ────────────────────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY demo/api/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# Copy office_os environment
+COPY office_os/ /app/office_os/
+
+# Copy demo API server
+COPY demo/api/ /app/demo/api/
+
+# Copy built React frontend
+COPY --from=frontend-builder /app/frontend/dist /app/demo/frontend/dist
+
+WORKDIR /app/demo/api
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "server.py", "--host", "0.0.0.0", "--port", "8000"]

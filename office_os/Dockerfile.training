@@ -1,0 +1,52 @@
+# Training server for Office OS (Northflank H100 deployment)
+# Runs vLLM inference (port 8000) + GRPO training worker (port 8001)
+# Base model: Qwen/Qwen2.5-14B-Instruct with LoRA hot-loading
+#
+# Build:  docker build -f Dockerfile.training -t office-os-training .
+# Run:    docker run --gpus all -p 8000:8000 -p 8001:8001 \
+#           -e HF_TOKEN=... -e BASE_MODEL=Qwen/Qwen2.5-14B-Instruct \
+#           office-os-training
+
+FROM pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl && rm -rf /var/lib/apt/lists/*
+
+# vLLM + training deps
+RUN pip install --no-cache-dir \
+    "vllm>=0.6" \
+    "trl>=0.12" \
+    "datasets>=3.0" \
+    "peft>=0.13" \
+    "accelerate>=1.0" \
+    "bitsandbytes>=0.44" \
+    wandb \
+    huggingface_hub \
+    httpx \
+    boto3 \
+    fastapi \
+    uvicorn
+
+# Unsloth for memory-efficient QLoRA
+RUN pip install --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+
+# Copy office_os
+COPY . /app/office_os/
+
+WORKDIR /app/office_os
+
+ENV PYTHONPATH="/app/office_os:$PYTHONPATH"
+ENV BASE_MODEL="Qwen/Qwen2.5-14B-Instruct"
+
+EXPOSE 8000 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+COPY training/entrypoint-docker.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]
