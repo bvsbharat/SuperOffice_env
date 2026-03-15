@@ -4,9 +4,11 @@
 
 set -euo pipefail
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 TRAIN_PORT="${TRAIN_PORT:-8001}"
+GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.45}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 
 echo "=== Office OS Training Server ==="
 echo "Model:     $BASE_MODEL"
@@ -31,8 +33,8 @@ VLLM_ALLOW_RUNTIME_LORA_UPDATING=True python -m vllm.entrypoints.openai.api_serv
     --enable-lora \
     --max-loras 8 \
     --max-lora-rank 16 \
-    --gpu-memory-utilization 0.9 \
-    --max-model-len 32768 \
+    --gpu-memory-utilization "$GPU_MEM_UTIL" \
+    --max-model-len "$MAX_MODEL_LEN" \
     --enforce-eager \
     > /tmp/vllm.log 2>&1 &
 
