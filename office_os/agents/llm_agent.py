@@ -352,7 +352,8 @@ class LLMAgent:
             f"## AVAILABLE TOOLS (optional)\n"
             f"You may include tool_calls to trigger integrations:\n"
             f"{tool_descriptions}\n\n"
-            f"Respond with ONLY a valid JSON object, nothing else:\n"
+            f"/no_think\n"
+            f"Respond with ONLY a valid JSON object, no thinking, no explanation:\n"
             f"{{\"action_type\": \"<one of the actions above>\", \"target\": \"...\", "
             f"\"parameters\": {{}}, \"reasoning\": \"...\", \"message\": \"role: message\", "
             f"\"tool_calls\": [{{\"tool_name\": \"...\", \"arguments\": {{}}}}]}}"
@@ -594,18 +595,59 @@ class LLMAgent:
         raise ValueError("No valid action in Claude response")
 
     def _parse_text_response(self, raw: str) -> AgentAction:
-        """Parse a text response into AgentAction."""
+        """Parse a text response into AgentAction.
+
+        Handles common model quirks:
+        - <think>...</think> blocks (Qwen 3.5 reasoning)
+        - Markdown code fences
+        - Trailing text after JSON
+        - Nested braces
+        """
+        import re
         text = raw.strip()
+
+        # Strip <think>...</think> blocks (Qwen 3.5 uses these for reasoning)
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+
+        # Strip markdown fences
         if text.startswith("```"):
             lines = text.split("\n")
             lines = [l for l in lines if not l.strip().startswith("```")]
             text = "\n".join(lines)
 
+        # Find the first balanced JSON object using brace counting
         start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            data = json.loads(text[start:end])
-            return AgentAction.model_validate(data)
+        if start >= 0:
+            depth = 0
+            in_string = False
+            escape_next = False
+            for i in range(start, len(text)):
+                c = text[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if c == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if c == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start:i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            return AgentAction.model_validate(data)
+                        except json.JSONDecodeError:
+                            # Try fixing common issues: trailing commas
+                            cleaned = re.sub(r',\s*([}\]])', r'\1', candidate)
+                            data = json.loads(cleaned)
+                            return AgentAction.model_validate(data)
 
         raise ValueError(f"Could not parse action from text: {text[:200]}")
 
