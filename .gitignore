@@ -1,3 +1,6 @@
 *.pyc
 .env
 office_os/integrations/office-os-489522-2ae845485bd9.json
+CLAUDE.md
+demo/frontend/.vite/
+office_os/benchmark_prompts.py
