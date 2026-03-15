@@ -139,7 +139,7 @@ class OfficeOsBridge:
         model: str = "claude-haiku-4-5-20251001",
         days: int = 10,
         art_endpoint: str = "",
-        art_model: str = "Qwen/Qwen2.5-3B-Instruct",
+        art_model: str = "Qwen/Qwen2.5-14B-Instruct",
         art_api_key: str = "",
         aws_region: str = "us-east-1",
         mode: str = "llm",

@@ -20,6 +20,12 @@ from .prompts import ROLE_PROMPTS
 logger = logging.getLogger(__name__)
 
 _OUTPUT_TOKENS = 512
+_MAX_CONTEXT_TOKENS = 200_000  # Claude haiku context window
+
+
+def _count_tokens(text: str) -> int:
+    """Estimate token count (~4 chars per token). Good enough for budget pruning."""
+    return len(text) // 4
 
 
 # ── Structured output models ─────────────────────────────────────────

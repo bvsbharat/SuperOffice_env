@@ -25,6 +25,7 @@ class TurnRecord:
     day: int
     turn: int
     metadata: dict = field(default_factory=dict)
+    reward_breakdown: dict = field(default_factory=dict)  # Decomposed reward signals
 
 
 class TrajectoryCollector:
@@ -49,6 +50,7 @@ class TrajectoryCollector:
         day: int,
         turn: int,
         metadata: dict | None = None,
+        reward_breakdown: dict | None = None,
     ):
         """Record a single agent turn."""
         record = TurnRecord(
@@ -60,6 +62,7 @@ class TrajectoryCollector:
             day=day,
             turn=turn,
             metadata=metadata or {},
+            reward_breakdown=reward_breakdown or {},
         )
         self._turns.setdefault(role, []).append(record)
         self._pending_batch.setdefault(role, []).append(record)
@@ -102,9 +105,86 @@ class TrajectoryCollector:
                         "user_message": t.user_message,
                         "assistant_response": t.assistant_response,
                         "reward": t.reward,
+                        "reward_breakdown": t.reward_breakdown,
                         "day": t.day,
                         "turn": t.turn,
                         "metadata": t.metadata,
                     }
                     f.write(json.dumps(record) + "\n")
         logger.info(f"Saved {self.total_count()} trajectory records to {path}")
+
+
+class ScenarioMiner:
+    """Mines critical decision points from simulation data (inspired by EnterpriseSim #73).
+
+    After each simulation run, identifies turns where reward spiked or crashed,
+    then extracts (state, action) windows around those moments as focused
+    training scenarios.
+
+    Pattern: Simulate → Mine → Train
+    """
+
+    def __init__(self, spike_threshold: float = 5.0, crash_threshold: float = -3.0, window_size: int = 3):
+        self.spike_threshold = spike_threshold
+        self.crash_threshold = crash_threshold
+        self.window_size = window_size
+        self.mined_scenarios: list[dict] = []
+
+    def mine(self, collector: TrajectoryCollector) -> list[dict]:
+        """Mine critical moments from collected trajectories."""
+        self.mined_scenarios = []
+
+        for role, turns in collector._turns.items():
+            if len(turns) < self.window_size * 2:
+                continue
+
+            for i, turn in enumerate(turns):
+                is_spike = turn.reward >= self.spike_threshold
+                is_crash = turn.reward <= self.crash_threshold
+
+                if not is_spike and not is_crash:
+                    continue
+
+                # Extract window around this moment
+                start = max(0, i - self.window_size)
+                end = min(len(turns), i + self.window_size + 1)
+                window = turns[start:end]
+
+                scenario = {
+                    "type": "spike" if is_spike else "crash",
+                    "role": role,
+                    "trigger_turn": turn.turn,
+                    "trigger_day": turn.day,
+                    "trigger_reward": turn.reward,
+                    "trigger_action": turn.assistant_response.get("action_type", ""),
+                    "window_rewards": [t.reward for t in window],
+                    "window": [
+                        {
+                            "system_prompt": t.system_prompt,
+                            "user_message": t.user_message,
+                            "assistant_response": t.assistant_response,
+                            "reward": t.reward,
+                            "day": t.day,
+                            "turn": t.turn,
+                        }
+                        for t in window
+                    ],
+                }
+                self.mined_scenarios.append(scenario)
+
+        logger.info(f"Mined {len(self.mined_scenarios)} critical scenarios "
+                     f"({len([s for s in self.mined_scenarios if s['type'] == 'spike'])} spikes, "
+                     f"{len([s for s in self.mined_scenarios if s['type'] == 'crash'])} crashes)")
+        return self.mined_scenarios
+
+    def save(self, path: str):
+        """Save mined scenarios to a JSONL file."""
+        if not self.mined_scenarios:
+            return
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w") as f:
+            for scenario in self.mined_scenarios:
+                f.write(json.dumps(scenario) + "\n")
+        logger.info(f"Saved {len(self.mined_scenarios)} mined scenarios to {path}")
+
+
