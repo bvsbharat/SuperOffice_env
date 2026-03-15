@@ -39,7 +39,7 @@ COPY . /app/office_os/
 WORKDIR /app/office_os
 
 ENV PYTHONPATH="/app/office_os:$PYTHONPATH"
-ENV BASE_MODEL="Qwen/Qwen2.5-3B-Instruct"
+ENV BASE_MODEL="Qwen/Qwen3.5-0.8B"
 
 EXPOSE 8000 8001
 

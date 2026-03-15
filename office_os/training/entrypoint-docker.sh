@@ -4,11 +4,11 @@
 
 set -euo pipefail
 
-BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-3B-Instruct}"
+BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-0.8B}"
 VLLM_PORT="${VLLM_PORT:-8000}"
 TRAIN_PORT="${TRAIN_PORT:-8001}"
-GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.45}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
+GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.5}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 
 echo "=== Office OS Training Server ==="
 echo "Model:     $BASE_MODEL"
