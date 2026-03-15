@@ -63,11 +63,6 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Serve built frontend if it exists
-dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-if os.path.isdir(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
-
 
 @app.get("/health")
 async def health():
@@ -79,28 +74,34 @@ async def health():
     }
 
 
+# Serve built frontend if it exists (AFTER all routes — mount("/") is a catch-all)
+dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(dist_path):
+    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SuperOffice GTM Demo Server")
-    parser.add_argument("--provider", choices=["bedrock", "art", "ollama", "anthropic"], default="bedrock",
-                        help="LLM provider: bedrock (default), ollama (local Mac), art (vLLM), anthropic (direct)")
-    parser.add_argument("--model", type=str, default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
-                        help="Model name (default: global.anthropic.claude-haiku-4-5-20251001-v1:0)")
-    parser.add_argument("--days", type=int, default=10,
-                        help="Days to simulate per episode (default: 10)")
-    parser.add_argument("--art-endpoint", type=str, default="",
-                        help="ART/vLLM endpoint URL")
-    parser.add_argument("--art-model", type=str, default="Qwen/Qwen2.5-3B-Instruct",
-                        help="Model name on the vLLM endpoint")
-    parser.add_argument("--art-api-key", type=str, default="",
-                        help="API key for ART endpoint")
-    parser.add_argument("--aws-region", type=str, default="us-east-1",
-                        help="AWS region for Bedrock")
-    parser.add_argument("--mode", choices=["llm", "training", "inference"], default="llm",
-                        help="Simulation mode: llm (default), training (collect trajectories), inference (use trained LoRA)")
-    parser.add_argument("--northflank-endpoint", type=str, default="",
-                        help="Northflank vLLM endpoint for training/inference")
-    parser.add_argument("--train-every", type=int, default=999,
-                        help="Train every N simulation days (default: 999 = end of episode only)")
+    parser.add_argument("--provider", choices=["bedrock", "art", "ollama", "anthropic"], default=bridge_config["provider"],
+                        help="LLM provider (env: PROVIDER)")
+    parser.add_argument("--model", type=str, default=bridge_config["model"],
+                        help="Model name (env: MODEL)")
+    parser.add_argument("--days", type=int, default=bridge_config["days"],
+                        help="Days to simulate per episode (env: DAYS)")
+    parser.add_argument("--art-endpoint", type=str, default=bridge_config["art_endpoint"],
+                        help="ART/vLLM endpoint URL (env: ART_ENDPOINT)")
+    parser.add_argument("--art-model", type=str, default=bridge_config["art_model"],
+                        help="Model name on the vLLM endpoint (env: ART_MODEL)")
+    parser.add_argument("--art-api-key", type=str, default=bridge_config["art_api_key"],
+                        help="API key for ART endpoint (env: ART_API_KEY)")
+    parser.add_argument("--aws-region", type=str, default=bridge_config["aws_region"],
+                        help="AWS region for Bedrock (env: AWS_REGION)")
+    parser.add_argument("--mode", choices=["llm", "training", "inference"], default=bridge_config["mode"],
+                        help="Simulation mode (env: SIM_MODE)")
+    parser.add_argument("--northflank-endpoint", type=str, default=bridge_config["northflank_endpoint"],
+                        help="Northflank vLLM endpoint (env: NORTHFLANK_ENDPOINT)")
+    parser.add_argument("--train-every", type=int, default=bridge_config["train_every"],
+                        help="Train every N simulation days (env: TRAIN_EVERY)")
     # Ollama options
     parser.add_argument("--ollama-model", type=str, default="qwen3.5:0.8b",
                         help="Ollama model name (default: qwen3.5:0.8b)")
